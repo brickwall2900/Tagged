@@ -9,6 +9,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -29,9 +30,34 @@ public class TaggedHelper {
     public void shutdown() {
     }
 
-    public record FileTag(Path filePath, String[] tags) {}
+    public record FileTag(Path filePath, String[] tags) {
+        @Override
+        public boolean equals(Object o) {
+            if (o == null || getClass() != o.getClass()) return false;
+            FileTag fileTag = (FileTag) o;
+            return Objects.equals(filePath, fileTag.filePath);
+        }
 
-    private final class FileIndexWorker extends SwingWorkerWithDone<FileTag[], Void> {
+        @Override
+        public int hashCode() {
+            return Objects.hashCode(filePath);
+        }
+    }
+
+    private static final class IndexWriterWorker extends SwingWorkerWithDone<Void, Void> {
+        private final FileTag[] files;
+
+        private IndexWriterWorker(FileTag[] files) {
+            this.files = files;
+        }
+
+        @Override
+        protected Void doInBackground() throws Exception {
+            return null;
+        }
+    }
+
+    private static final class FileIndexWorker extends SwingWorkerWithDone<FileTag[], Void> {
         private final Path location;
 
         public FileIndexWorker(Path location) {
@@ -39,7 +65,7 @@ public class TaggedHelper {
         }
 
         @Override
-        protected FileTag[] doInBackground() throws Exception {
+        protected FileTag[] doInBackground() {
             try (Stream<Path> stream = Files.walk(location)) {
                 AtomicLong progress = new AtomicLong();
                 return stream

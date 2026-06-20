@@ -11,15 +11,16 @@ import javax.swing.*;
 import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.awt.image.ImageObserver;
-import java.io.ByteArrayInputStream;
-import java.io.IOException;
+import java.io.*;
 import java.lang.ref.Reference;
 import java.lang.ref.SoftReference;
-import java.lang.ref.WeakReference;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.*;
+import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -38,7 +39,8 @@ public class IconManager {
     public int thumbnailSize = 32;
 
     public final ExecutorService executor = Executors.newFixedThreadPool(
-            (int) (Runtime.getRuntime().availableProcessors() / 1.5));
+            (int) (Runtime.getRuntime().availableProcessors() / 1.25));
+    //public final ExecutorService executor = Executors.newSingleThreadExecutor();
 
     private final LRUCache<Path, Reference<Icon>> thumbnailCacheLRU = new LRUCache<>(30, this::onItemRemoved);
     private final Map<Path, Reference<Icon>> thumbnailCache = Collections.synchronizedMap(thumbnailCacheLRU);
@@ -58,7 +60,8 @@ public class IconManager {
     }
 
     public Icon getIcon(Path path, Component associatedComponent) {
-        Reference<Icon> iconRef = thumbnailCache.get(path);
+        Reference<Icon> iconRef;
+        iconRef = thumbnailCache.get(path);
         Icon cachedIcon = iconRef != null ? iconRef.get() : null;
 
         if (cachedIcon != null) {
@@ -132,17 +135,71 @@ public class IconManager {
         thumbnailCacheLRU.setMaxEntries(entries);
     }
 
+    public long getMinimumRefreshTime() {
+        long refreshTime = -1;
+        Set<Reference<Icon>> icons;
+        synchronized (thumbnailCache) {
+            icons = new HashSet<>(thumbnailCache.values());
+        }
+        for (Reference<Icon> iconRef : icons) {
+            Icon icon = iconRef != null ? iconRef.get() : null;
+            if (icon instanceof GifImageWrapperIcon gifImageWrapperIcon) {
+                if (refreshTime == -1) {
+                    refreshTime = gifImageWrapperIcon.getMinDelayTime();
+                } else {
+                    refreshTime = Math.min(refreshTime, gifImageWrapperIcon.getMinDelayTime());
+                }
+            }
+        }
+        return refreshTime;
+    }
+
+    public long getMinimumRefreshTime(List<Path> paths) {
+        long refreshTime = -1;
+        Map<Path, Reference<Icon>> cacheCopy;
+        synchronized (thumbnailCache) {
+            cacheCopy = new HashMap<>(thumbnailCache);
+        }
+
+        Iterator<Map.Entry<Path, Reference<Icon>>> iterator = cacheCopy.entrySet().iterator();
+        Set<Reference<Icon>> icons = new HashSet<>();
+        while (iterator.hasNext()) {
+            Map.Entry<Path, Reference<Icon>> entry = iterator.next();
+            if (paths.contains(entry.getKey())) {
+                icons.add(entry.getValue());
+            }
+        }
+
+        for (Reference<Icon> iconRef : icons) {
+            Icon icon = iconRef != null ? iconRef.get() : null;
+            if (icon instanceof GifImageWrapperIcon gifImageWrapperIcon) {
+                if (refreshTime == -1) {
+                    refreshTime = gifImageWrapperIcon.getMinDelayTime();
+                } else {
+                    refreshTime = Math.min(refreshTime, gifImageWrapperIcon.getMinDelayTime());
+                }
+            }
+        }
+        return refreshTime;
+    }
+
     Map<Path, Reference<Icon>> getIconCacheMap() {
         return thumbnailCache;
     }
 
-    private Icon loadGif(Path path) throws IOException {
+    private Icon loadGif(Path path, String id) throws IOException {
         try (GifImageWrapperIconIndexedParser parser =
                      new GifImageWrapperIconIndexedDownsampledParser(2)) {
-            return GifImageReader.readImage(path, parser);
+            GifImageWrapperIcon icon = GifImageReader.readImage(path, parser);
+            //executor.submit(() -> icon.saveToCache(CACHE_DIR, id));
+            return icon;
         }
         //return new ScaledImageIcon(new ImageIcon(path.toUri().toURL()), thumbnailSize, thumbnailSize);
         //return new ImageIcon(path.toUri().toURL());
+    }
+
+    private Icon loadCachedGif(String id) throws UncheckedIOException {
+        return new GifImageWrapperIcon(CACHE_DIR, id);
     }
 
     private void onItemRemoved(Reference<Icon> iconRef) {
@@ -159,6 +216,20 @@ public class IconManager {
         }
     }
 
+    private static String filenameToHash(String id) {
+        MessageDigest digest = null;
+        try {
+            digest = MessageDigest.getInstance("SHA-1");
+        } catch (NoSuchAlgorithmException _) {
+        }
+        if (digest != null) {
+            return HexFormat.of().formatHex(digest.digest(id.getBytes(StandardCharsets.UTF_8)));
+        } else {
+            return String.valueOf(id.hashCode());
+        }
+    }
+    public static final Path CACHE_DIR = Path.of(System.getProperty("user.home"), ".cache", "Tagged");
+
     private Icon loadImage(Path path) {
         try {
             String contentType = Files.probeContentType(path);
@@ -166,9 +237,26 @@ public class IconManager {
                 return null;
             }
 
+            String id = filenameToHash(path.toString());
+
+            Path cachePath = CACHE_DIR.resolve(id);
             if (path.getFileName().toString().toLowerCase().endsWith(".gif")) {
                 // special handling with GIF files
-                return loadGif(path);
+//                try {
+//                    if (Files.exists(cachePath)) {
+//                        return loadCachedGif(id);
+//                    }
+//                } catch (UncheckedIOException e) {
+//                    e.printStackTrace();
+//                }
+                return loadGif(path, id);
+            }
+
+            if (Files.exists(cachePath)) {
+                try (InputStream stream = new BufferedInputStream(Files.newInputStream(cachePath))) {
+                    BufferedImage fileCached = ImageIO.read(stream);
+                    return new ScaledImageIcon(new ImageIcon(fileCached));
+                }
             }
 
             BufferedImage original = ImageIO.read(path.toFile());
@@ -204,6 +292,10 @@ public class IconManager {
             g2d.dispose();
 
             original.flush();
+
+            try (OutputStream outputStream = new BufferedOutputStream(Files.newOutputStream(cachePath))) {
+                ImageIO.write(thumbnail, "JPG", outputStream);
+            }
 
             return new ScaledImageIcon(new ImageIcon(thumbnail));
 

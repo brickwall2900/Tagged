@@ -77,6 +77,7 @@ public class GifImageWrapperIconParser extends GifImagePixelARGBParser<GifImageW
 
     @Override
     public GifImageWrapperIcon getResult() {
+        wrapper.finishedDecoding();
         return wrapper;
     }
 

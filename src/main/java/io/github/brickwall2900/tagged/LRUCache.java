@@ -1,9 +1,11 @@
 package io.github.brickwall2900.tagged;
 
 import java.awt.image.BufferedImage;
-import java.util.LinkedHashMap;
-import java.util.Map;
+import java.util.*;
 import java.util.function.Consumer;
+import java.util.function.IntFunction;
+import java.util.function.Predicate;
+import java.util.stream.Stream;
 
 public class LRUCache<K, V> extends LinkedHashMap<K, V> {
     private int maxEntries;

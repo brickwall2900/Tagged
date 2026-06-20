@@ -1,10 +1,18 @@
 package io.github.brickwall2900.tagged.gif;
 
+import javax.imageio.ImageIO;
 import javax.swing.*;
 import java.awt.*;
 import java.awt.image.*;
-import java.util.ArrayList;
+import java.io.*;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.*;
 import java.util.List;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipFile;
+import java.util.zip.ZipInputStream;
+import java.util.zip.ZipOutputStream;
 
 public class GifImageWrapperIcon implements Icon {
     private final List<ImageFrame> images;
@@ -26,6 +34,57 @@ public class GifImageWrapperIcon implements Icon {
     GifImageWrapperIcon() {
         images = new ArrayList<>();
         startTime = System.currentTimeMillis();
+    }
+
+    public GifImageWrapperIcon(Path cacheDir, String id) {
+        try (ZipFile zipFile = new ZipFile(cacheDir.resolve(id).toFile())) {
+            ZipEntry metaFile = zipFile.getEntry("meta");
+            if (metaFile == null) {
+                throw new IOException("meta file not found");
+            }
+
+            Properties properties = new Properties();
+            try (InputStream stream = zipFile.getInputStream(metaFile)) {
+                properties.load(stream);
+            }
+
+            int count = Integer.parseInt(properties.getProperty("count"));
+            images = new ArrayList<>();
+
+            for (int i = 0; i < count; i++) {
+                ZipEntry entry = zipFile.getEntry(String.valueOf(i));
+                try (InputStream stream = new BufferedInputStream(zipFile.getInputStream(entry))) {
+                    String encoded = properties.getProperty(String.valueOf(i));
+                    String[] split = encoded.split(",");
+                    ImageFrame frame = new ImageFrame(
+                            Objects.requireNonNull(ImageIO.read(stream),
+                                    "heart attack while reading " + i + " in " + id),
+                            Integer.parseInt(split[0]),
+                            Integer.parseInt(split[1]),
+                            Integer.parseInt(split[2]),
+                            Integer.parseInt(split[3]),
+                            Short.parseShort(split[4]),
+                            Byte.parseByte(split[5]),
+                            new Color(Integer.parseInt(split[6]))
+                    );
+                    images.add(frame);
+                }
+            }
+
+            canvasWidth = Integer.parseInt(properties.getProperty("width"));
+            canvasHeight = Integer.parseInt(properties.getProperty("height"));
+            scaledWidth = Integer.parseInt(properties.getProperty("scaledWidth"));
+            scaledHeight = Integer.parseInt(properties.getProperty("scaledHeight"));
+            backgroundColorIndex = Integer.parseInt(properties.getProperty("backgroundColorIndex"));
+            imageCount = Integer.parseInt(properties.getProperty("imageCount"));
+            loopCount = Integer.parseInt(properties.getProperty("loopCount"));
+            totalDurationMs = Integer.parseInt(properties.getProperty("totalDurationMs"));
+
+            finishedDecoding();
+            startTime = System.currentTimeMillis();
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
     }
 
     public int getCanvasWidth() {
@@ -168,6 +227,66 @@ public class GifImageWrapperIcon implements Icon {
         imageCount++;
     }
 
+    void finishedDecoding() {
+        if (canvas == null) {
+            canvas = GraphicsEnvironment.getLocalGraphicsEnvironment()
+                    .getDefaultScreenDevice()
+                    .getDefaultConfiguration()
+                    .createCompatibleVolatileImage(canvasWidth, canvasHeight, Transparency.BITMASK);
+            lastFrame = GraphicsEnvironment.getLocalGraphicsEnvironment()
+                    .getDefaultScreenDevice()
+                    .getDefaultConfiguration()
+                    .createCompatibleVolatileImage(canvasWidth, canvasHeight, Transparency.BITMASK);
+        }
+    }
+
+    public void saveToCache(Path cacheDir, String id) {
+        try {
+            Path mainFolder = cacheDir.resolve(id);
+            try (ZipOutputStream zipOutputStream = new ZipOutputStream(Files.newOutputStream(mainFolder))) {
+                //zipOutputStream.setLevel(9);
+                Properties properties = new Properties();
+                for (int i = 0; i < images.size(); i++) {
+                    ZipEntry entry = new ZipEntry(String.valueOf(i));
+                    zipOutputStream.putNextEntry(entry);
+
+                    ImageFrame image = images.get(i);
+                    ImageIO.write(image.image, "BMP", zipOutputStream);
+                    properties.put(String.valueOf(i), "%d,%d,%d,%d,%d,%d,%d".formatted(
+                            image.left,
+                            image.top,
+                            image.width,
+                            image.height,
+                            image.delay,
+                            image.disposalMethod,
+                            image.backgroundColor.getRGB()
+                    ));
+
+                    zipOutputStream.closeEntry();
+                }
+                properties.put("count", String.valueOf(images.size()));
+                properties.put("width", String.valueOf(canvasWidth));
+                properties.put("height", String.valueOf(canvasHeight));
+                properties.put("scaledWidth", String.valueOf(scaledWidth));
+                properties.put("scaledHeight", String.valueOf(scaledHeight));
+                properties.put("backgroundColorIndex", String.valueOf(backgroundColorIndex));
+                properties.put("imageCount", String.valueOf(imageCount));
+                properties.put("loopCount", String.valueOf(loopCount));
+                properties.put("totalDurationMs", String.valueOf(totalDurationMs));
+
+                ZipEntry metaFile = new ZipEntry("meta");
+                zipOutputStream.putNextEntry(metaFile);
+                properties.store(zipOutputStream, null);
+                zipOutputStream.closeEntry();
+
+                zipOutputStream.finish();
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+    }
+
     public int getCurrentFrameIndexNow() {
         if (imageCount == 0) {
             return -1;
@@ -209,16 +328,13 @@ public class GifImageWrapperIcon implements Icon {
     }
 
     private void drawFrames(int targetIndex) {
-        if (canvas == null) {
-            canvas = GraphicsEnvironment.getLocalGraphicsEnvironment()
-                    .getDefaultScreenDevice()
-                    .getDefaultConfiguration()
-                    .createCompatibleVolatileImage(canvasWidth, canvasHeight, Transparency.BITMASK);
-            lastFrame = GraphicsEnvironment.getLocalGraphicsEnvironment()
-                    .getDefaultScreenDevice()
-                    .getDefaultConfiguration()
-                    .createCompatibleVolatileImage(canvasWidth, canvasHeight, Transparency.BITMASK);
-        }
+        canvas.validate(GraphicsEnvironment.getLocalGraphicsEnvironment()
+                .getDefaultScreenDevice()
+                .getDefaultConfiguration());
+
+        lastFrame.validate(GraphicsEnvironment.getLocalGraphicsEnvironment()
+                .getDefaultScreenDevice()
+                .getDefaultConfiguration());
 
         // if looped then fuck everything
         if (targetIndex < lastRenderedIndex || lastRenderedIndex == -1) {
@@ -276,7 +392,6 @@ public class GifImageWrapperIcon implements Icon {
         int frameIndex = getCurrentFrameIndexNow();
         if (frameIndex != -1) {
             drawFrames(frameIndex);
-            //g.drawImage(canvas, x, y, observer);
 
             Graphics2D g2d = (Graphics2D) g.create();
 

@@ -2,6 +2,7 @@ package io.github.brickwall2900.tagged;
 
 import com.formdev.flatlaf.FlatDarkLaf;
 import com.formdev.flatlaf.FlatLightLaf;
+import com.formdev.flatlaf.extras.FlatAnimatedLafChange;
 import io.github.brickwall2900.swing.core.TargetLocator;
 import io.github.brickwall2900.tagged.gif.GifImageWrapperIcon;
 
@@ -48,15 +49,9 @@ public class Tagged extends JFrame {
             public void windowClosing(WindowEvent e) {
                 onWindowClose();
             }
-
-            @Override
-            public void windowOpened(WindowEvent e) {
-                onWindowOpen();
-            }
         });
 
         setTitle(BUNDLE.getString("title"));
-        setIgnoreRepaint(true);
         pack();
         setLocationByPlatform(true);
         setDefaultCloseOperation(EXIT_ON_CLOSE);
@@ -73,9 +68,15 @@ public class Tagged extends JFrame {
         searchPanel.setBorder(BorderFactory.createEmptyBorder(PADDING, PADDING, PADDING, PADDING));
         searchPanel.add(searchField, BorderLayout.CENTER);
 
-        JList<TaggedHelper.FileTag> list = new JList<>();
+        JList<TaggedHelper.FileTag> list = new JList<>() {
+            @Override
+            protected void paintComponent(Graphics g) {
+                super.paintComponent(g);
+                onListRepaint();
+            }
+        };
         list.setName("FileTagList");
-        list.setModel(new DefaultListModel<>());
+        list.setModel(new TaggedFileListModel());
         list.setCellRenderer(new TaggedFileListCellRenderer(iconManager));
         list.setLayoutOrientation(JList.HORIZONTAL_WRAP);
         list.setVisibleRowCount(-1);
@@ -140,17 +141,17 @@ public class Tagged extends JFrame {
             SwingWorkerWithDone<TaggedHelper.FileTag[], Void> worker = helper.startIndexingAsync(newLocation);
             worker.addPropertyChangeListener(evt -> {
                 if (Objects.equals("path", evt.getPropertyName())) {
-                    updateStatusBar("Found " + evt.getNewValue());
+                    updateStatusBar(BUNDLE.getString("status.finding").formatted(evt.getNewValue()));
                 }
             });
             worker.onDone((files, exception) -> {
                 if (exception != null) {
                     exception.printStackTrace();
                 } else {
-                    DefaultListModel<TaggedHelper.FileTag> model = ((DefaultListModel<TaggedHelper.FileTag>)
+                    TaggedFileListModel model = ((TaggedFileListModel)
                             $("FileTagList", JList.class).getModel());
-                    model.addAll(List.of(files));
-                    updateStatusBarImmediate("DONE! Found " + files.length + " items");
+                    model.addAll(files);
+                    updateStatusBarImmediate(BUNDLE.getString("status.finding.done").formatted(files.length));
                 }
             });
             worker.execute();
@@ -159,6 +160,7 @@ public class Tagged extends JFrame {
 
     private void setDarkMode(boolean darkMode) {
         SwingUtilities.invokeLater(() -> {
+            FlatAnimatedLafChange.showSnapshot();
             if (darkMode) {
                 FlatDarkLaf.setup();
             } else {
@@ -168,6 +170,7 @@ public class Tagged extends JFrame {
             if (fileChooser != null) {
                 SwingUtilities.updateComponentTreeUI(fileChooser);
             }
+            FlatAnimatedLafChange.hideSnapshotWithAnimation();
 
             preferences.putBoolean("darkmode", darkMode);
         });
@@ -218,6 +221,33 @@ public class Tagged extends JFrame {
         addLocation();
     }
 
+    @SuppressWarnings("unchecked")
+    private void onListRepaint() {
+        JList<TaggedHelper.FileTag> list = $("FileTagList", JList.class);
+        int firstVisibleIndex = list.getFirstVisibleIndex();
+        int lastVisibleIndex = list.getLastVisibleIndex();
+        if (firstVisibleIndex != -1 && lastVisibleIndex != -1) {
+            TaggedFileListModel model = (TaggedFileListModel) list.getModel();
+            long minDelayTime = iconManager.getMinimumRefreshTime(
+                    model.subList(firstVisibleIndex, lastVisibleIndex + 1)
+                            .stream()
+                            .map(TaggedHelper.FileTag::filePath)
+                            .toList());
+            if (minDelayTime != -1) {
+                repaintTimer.setDelay((int) minDelayTime);
+                if (!repaintTimer.isRunning()) {
+                    System.out.println("Repaint timer started");
+                    repaintTimer.start();
+                }
+            } else {
+                if (repaintTimer.isRunning()) {
+                    System.out.println("Repaint timer stopped");
+                    repaintTimer.stop();
+                }
+            }
+        }
+    }
+
     // dirty ahh
     private void onDebugMenuItemPressed(ActionEvent e) {
         Runtime runtime = Runtime.getRuntime();
@@ -237,7 +267,11 @@ public class Tagged extends JFrame {
             @Override
             public void actionPerformed(ActionEvent e) {
                 try {
-                    Set<Reference<Icon>> icons = new HashSet<>(iconManager.getIconCacheMap().values());
+                    Map<Path, Reference<Icon>> cache = iconManager.getIconCacheMap();
+                    Set<Reference<Icon>> icons;
+                    synchronized (cache) {
+                        icons = new HashSet<>(cache.values());
+                    }
                     int entries = icons.size();
                     long gifMemoryUsage = 0L;
                     long gifCanvasMemoryUsage = 0L;
@@ -277,16 +311,14 @@ public class Tagged extends JFrame {
     private void onRepaintTick(ActionEvent actionEvent) {
         JList<TaggedHelper.FileTag> list = $("FileTagList", JList.class);
         list.repaint(list.getVisibleRect());
+
+
     }
 
     private void onWindowClose() {
         repaintTimer.stop();
         iconManager.shutdown();
         helper.shutdown();
-    }
-
-    private void onWindowOpen() {
-        repaintTimer.start();
     }
 
     private final TaggedHelper helper;

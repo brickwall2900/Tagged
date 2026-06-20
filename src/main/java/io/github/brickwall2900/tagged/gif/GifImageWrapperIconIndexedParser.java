@@ -82,6 +82,7 @@ public class GifImageWrapperIconIndexedParser extends GifImagePixelIndexedParser
 
     @Override
     public GifImageWrapperIcon getResult() {
+        wrapper.finishedDecoding();
         return wrapper;
     }
 
