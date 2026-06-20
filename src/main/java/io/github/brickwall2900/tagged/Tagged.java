@@ -79,8 +79,8 @@ public class Tagged extends JFrame {
         list.setCellRenderer(new TaggedFileListCellRenderer(iconManager));
         list.setLayoutOrientation(JList.HORIZONTAL_WRAP);
         list.setVisibleRowCount(-1);
-        list.setFixedCellWidth(128);
-        list.setFixedCellHeight(128);
+        list.setFixedCellWidth(96);
+        list.setFixedCellHeight(96);
         scrollPanel.setViewportView(list);
         scrollPanel.setPreferredSize(new Dimension(800, 600));
 
@@ -150,7 +150,7 @@ public class Tagged extends JFrame {
                     DefaultListModel<TaggedHelper.FileTag> model = ((DefaultListModel<TaggedHelper.FileTag>)
                             $("FileTagList", JList.class).getModel());
                     model.addAll(List.of(files));
-                    updateStatusBar("");
+                    updateStatusBarImmediate("DONE! Found " + files.length + " items");
                 }
             });
             worker.execute();
@@ -166,7 +166,7 @@ public class Tagged extends JFrame {
             }
             SwingUtilities.updateComponentTreeUI(this);
             if (fileChooser != null) {
-            SwingUtilities.updateComponentTreeUI(fileChooser);
+                SwingUtilities.updateComponentTreeUI(fileChooser);
             }
 
             preferences.putBoolean("darkmode", darkMode);
@@ -204,6 +204,10 @@ public class Tagged extends JFrame {
         }
     }
 
+    private void updateStatusBarImmediate(String text) {
+        $("StatusLabel", JLabel.class).setText(text);
+    }
+
     // events //
     private void onDarkModeMenuItemChecked(ChangeEvent e) {
         JCheckBoxMenuItem src = (JCheckBoxMenuItem) e.getSource();
@@ -214,6 +218,7 @@ public class Tagged extends JFrame {
         addLocation();
     }
 
+    // dirty ahh
     private void onDebugMenuItemPressed(ActionEvent e) {
         Runtime runtime = Runtime.getRuntime();
 
@@ -224,7 +229,7 @@ public class Tagged extends JFrame {
         optionPane.setMessageType(JOptionPane.INFORMATION_MESSAGE);
         optionPane.setOptionType(JOptionPane.DEFAULT_OPTION);
 
-        JDialog dialog = optionPane.createDialog(this, "DebugInfo");
+        JDialog dialog = optionPane.createDialog(this, BUNDLE.getString("debug.title"));
         dialog.setModalityType(Dialog.ModalityType.MODELESS);
         dialog.setResizable(true);
 

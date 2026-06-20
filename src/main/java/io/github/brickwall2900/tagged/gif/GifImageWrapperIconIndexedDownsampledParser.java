@@ -5,9 +5,14 @@ import java.io.DataInputStream;
 import java.io.IOException;
 import java.util.Objects;
 
-public class GifImageWrapperIconIndexedParser extends GifImagePixelIndexedParser<GifImageWrapperIcon> {
-    protected GifImageWrapperIcon wrapper = new GifImageWrapperIcon();
-    protected short timesToLoop;
+// what in the actual fuck is this name
+// AbstractEmployeeJobSwitchIndexedReversedParserFactoryBuilderWrapper ahh type shit
+public class GifImageWrapperIconIndexedDownsampledParser extends GifImageWrapperIconIndexedParser {
+    private final double sampleSize;
+
+    public GifImageWrapperIconIndexedDownsampledParser(double sampleSize) {
+        this.sampleSize = sampleSize;
+    }
 
     @Override
     public void decodeImageIndexed(byte[] indices,
@@ -28,7 +33,8 @@ public class GifImageWrapperIconIndexedParser extends GifImagePixelIndexedParser
                 disposalMethod,
                 transparencyEnabled,
                 transparencyIndex,
-                1);
+                sampleSize
+        );
     }
 
     @Override
@@ -51,43 +57,13 @@ public class GifImageWrapperIconIndexedParser extends GifImagePixelIndexedParser
                 globalColorTable
         );
 
+        int scaledFrameWidth = (int) Math.max(1, canvasWidth / sampleSize);
+        int scaledFrameHeight = (int) Math.max(1, canvasHeight / sampleSize);
+
         wrapper.setBackgroundColorIndex(backgroundColorIndex & 0xFF);
-        wrapper.setCanvasWidth(canvasWidth);
-        wrapper.setScaledWidth(canvasWidth);
-        wrapper.setCanvasHeight(canvasHeight);
-        wrapper.setScaledHeight(canvasHeight);
-    }
-
-    @Override
-    public void onHeaderRead(HeaderVersion version) {
-    }
-
-    @Override
-    public void onApplicationExtensionRead(String id,
-                                           String code,
-                                           byte[] subBlocks) {
-        if (Objects.equals(id, "NETSCAPE") && Objects.equals(code, "2.0")) {
-            try (DataInputStream subBlockStream = new DataInputStream(new ByteArrayInputStream(subBlocks))) {
-                subBlockStream.skipBytes(1);
-                timesToLoop = subBlockStream.readShort();
-            } catch (IOException e) {
-                throw new InternalError("never reaching here", e);
-            }
-        }
-    }
-
-    @Override
-    public void onCommentExtensionRead(byte[] subBlocks) {
-    }
-
-    @Override
-    public GifImageWrapperIcon getResult() {
-        return wrapper;
-    }
-
-    @Override
-    public void close() {
-        super.close();
-        this.wrapper = null;
+        wrapper.setCanvasWidth(scaledFrameWidth);
+        wrapper.setScaledWidth(scaledFrameWidth);
+        wrapper.setCanvasHeight(scaledFrameHeight);
+        wrapper.setScaledHeight(scaledFrameHeight);
     }
 }

@@ -15,7 +15,7 @@ public class GifImageWrapperIcon implements Icon {
     private int scaledWidth, scaledHeight;
 
     private VolatileImage canvas;
-    private BufferedImage lastFrame;
+    private VolatileImage lastFrame;
     private int lastRenderedIndex = -1;
 
     int loopCount;
@@ -115,25 +115,38 @@ public class GifImageWrapperIcon implements Icon {
             short delayTime,
             byte disposalMethod,
             boolean transparencyEnabled,
-            int transparencyIndex) {
+            int transparencyIndex,
+            double sampleSize) {
+        int scaledFrameWidth = (int) Math.max(1, imageWidth / sampleSize);
+        int scaledFrameHeight = (int) Math.max(1, imageHeight / sampleSize);
+        int scaledLeft = (int) (imageLeft / sampleSize);
+        int scaledTop = (int) (imageTop / sampleSize);
+
+        byte[] downsampledIndices = new byte[(scaledFrameWidth * scaledFrameHeight)];
+
+        for (int y = 0; y < scaledFrameHeight; y++) {
+            int oldY = (int) (y * sampleSize);
+            for (int x = 0; x < scaledFrameWidth; x++) {
+                int oldX = (int) (x * sampleSize);
+
+                downsampledIndices[y * scaledFrameWidth + x] = indices[oldY * imageWidth + oldX];
+            }
+        }
+
         IndexColorModel icm = new IndexColorModel(
-                8,
-                colorTable.length,
-                colorTable,
-                0,
-                false,
-                transparencyEnabled ? transparencyIndex : -1,
-                DataBuffer.TYPE_BYTE
+                8, colorTable.length, colorTable, 0, false,
+                transparencyEnabled ? transparencyIndex : -1, DataBuffer.TYPE_BYTE
         );
 
         BufferedImage target = new BufferedImage(
-                imageWidth,
-                imageHeight,
+                scaledFrameWidth,
+                scaledFrameHeight,
                 BufferedImage.TYPE_BYTE_INDEXED,
                 icm);
 
         byte[] targetPixels = ((DataBufferByte) target.getRaster().getDataBuffer()).getData();
-        System.arraycopy(indices, 0, targetPixels, 0, targetPixels.length);
+        System.arraycopy(downsampledIndices, 0, targetPixels, 0, targetPixels.length);
+
         delayTime *= 10; // delay time is 100ths of second; make that 1000ths of a second
 
         if (imageCount == 0) {
@@ -145,10 +158,10 @@ public class GifImageWrapperIcon implements Icon {
         totalDurationMs += delayTime;
         images.add(new ImageFrame(
                 target,
-                imageLeft,
-                imageTop,
-                imageWidth,
-                imageHeight,
+                scaledLeft,
+                scaledTop,
+                scaledFrameWidth,
+                scaledFrameHeight,
                 delayTime,
                 disposalMethod,
                 new Color(colorTable[backgroundColorIndex])));
@@ -200,13 +213,14 @@ public class GifImageWrapperIcon implements Icon {
             canvas = GraphicsEnvironment.getLocalGraphicsEnvironment()
                     .getDefaultScreenDevice()
                     .getDefaultConfiguration()
-                    .createCompatibleVolatileImage(canvasWidth, canvasHeight);
+                    .createCompatibleVolatileImage(canvasWidth, canvasHeight, Transparency.BITMASK);
             lastFrame = GraphicsEnvironment.getLocalGraphicsEnvironment()
                     .getDefaultScreenDevice()
                     .getDefaultConfiguration()
-                    .createCompatibleImage(canvasWidth, canvasHeight);
+                    .createCompatibleVolatileImage(canvasWidth, canvasHeight, Transparency.BITMASK);
         }
 
+        // if looped then fuck everything
         if (targetIndex < lastRenderedIndex || lastRenderedIndex == -1) {
             Graphics2D g2d = canvas.createGraphics();
             g2d.setComposite(AlphaComposite.Clear);
@@ -215,6 +229,7 @@ public class GifImageWrapperIcon implements Icon {
             lastRenderedIndex = -1;
         }
 
+        // re-render old frames from 0 to targetIndex
         while (lastRenderedIndex < targetIndex) {
             int nextIndex = lastRenderedIndex + 1;
             ImageFrame nextFrame = images.get(nextIndex);
@@ -265,8 +280,10 @@ public class GifImageWrapperIcon implements Icon {
 
             Graphics2D g2d = (Graphics2D) g.create();
 
-            g2d.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
-            g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            g2d.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR);
+            g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_OFF);
+            g2d.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_SPEED);
+            g2d.setRenderingHint(RenderingHints.KEY_COLOR_RENDERING, RenderingHints.VALUE_COLOR_RENDER_SPEED);
 
             double scaleX = (double) scaledWidth / canvasWidth;
             double scaleY = (double) scaledHeight / canvasHeight;
@@ -275,8 +292,6 @@ public class GifImageWrapperIcon implements Icon {
             g2d.scale(scaleX, scaleY);
 
             g2d.drawImage(canvas, 0, 0, observer);
-            g2d.setColor(Color.RED);
-            g2d.drawRect(0, 0, canvasWidth, canvasHeight);
 
             g2d.dispose();
         }

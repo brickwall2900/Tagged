@@ -38,7 +38,7 @@ public class IconManager {
     public int thumbnailSize = 32;
 
     public final ExecutorService executor = Executors.newFixedThreadPool(
-            Runtime.getRuntime().availableProcessors() / 2);
+            (int) (Runtime.getRuntime().availableProcessors() / 1.5));
 
     private final LRUCache<Path, Reference<Icon>> thumbnailCacheLRU = new LRUCache<>(30, this::onItemRemoved);
     private final Map<Path, Reference<Icon>> thumbnailCache = Collections.synchronizedMap(thumbnailCacheLRU);
@@ -73,6 +73,22 @@ public class IconManager {
         return defaultPlaceholderIcon;
     }
 
+    private void rescale(int[] widthHeight) {
+        int width = widthHeight[0];
+        int height = widthHeight[1];
+        if (width > thumbnailSize || height > thumbnailSize) {
+            if (width > height) {
+                height = (height * thumbnailSize) / width;
+                width = thumbnailSize;
+            } else {
+                width = (width * thumbnailSize) / height;
+                height = thumbnailSize;
+            }
+        }
+        widthHeight[0] = width;
+        widthHeight[1] = height;
+    }
+
     public void scaleIcon(Component associatedComponent, Icon cachedIcon) {
         if (cachedIcon instanceof ImageIcon imageIcon) {
             ImageObserver prevObserver = imageIcon.getImageObserver();
@@ -84,37 +100,19 @@ public class IconManager {
             if (!Objects.equals(prevObserver, associatedComponent)) {
                 scaledImageIcon.setImageObserver(associatedComponent);
             }
-            int width = scaledImageIcon.getOriginalWidth();
-            int height = scaledImageIcon.getOriginalHeight();
-            if (width > thumbnailSize || height > thumbnailSize) {
-                if (width > height) {
-                    height = (height * thumbnailSize) / width;
-                    width = thumbnailSize;
-                } else {
-                    width = (width * thumbnailSize) / height;
-                    height = thumbnailSize;
-                }
-            }
-            scaledImageIcon.setWidth(width);
-            scaledImageIcon.setHeight(height);
+            int[] wh = new int[] { scaledImageIcon.getOriginalWidth(), scaledImageIcon.getOriginalHeight() };
+            rescale(wh);
+            scaledImageIcon.setWidth(wh[0]);
+            scaledImageIcon.setHeight(wh[1]);
         } else if (cachedIcon instanceof GifImageWrapperIcon gifIcon) {
             ImageObserver prevObserver = gifIcon.getImageObserver();
             if (!Objects.equals(prevObserver, associatedComponent)) {
                 gifIcon.setImageObserver(associatedComponent);
             }
-            int width = gifIcon.getCanvasWidth();
-            int height = gifIcon.getCanvasHeight();
-            if (width > thumbnailSize || height > thumbnailSize) {
-                if (width > height) {
-                    height = (height * thumbnailSize) / width;
-                    width = thumbnailSize;
-                } else {
-                    width = (width * thumbnailSize) / height;
-                    height = thumbnailSize;
-                }
-            }
-            gifIcon.setScaledWidth(width);
-            gifIcon.setScaledHeight(height);
+            int[] wh = new int[] { gifIcon.getIconWidth(), gifIcon.getIconHeight() };
+            rescale(wh);
+            gifIcon.setScaledWidth(wh[0]);
+            gifIcon.setScaledHeight(wh[1]);
         }
     }
 
@@ -139,7 +137,8 @@ public class IconManager {
     }
 
     private Icon loadGif(Path path) throws IOException {
-        try (GifImageWrapperIconIndexedParser parser = new GifImageWrapperIconIndexedParser()) {
+        try (GifImageWrapperIconIndexedParser parser =
+                     new GifImageWrapperIconIndexedDownsampledParser(2)) {
             return GifImageReader.readImage(path, parser);
         }
         //return new ScaledImageIcon(new ImageIcon(path.toUri().toURL()), thumbnailSize, thumbnailSize);
@@ -196,10 +195,13 @@ public class IconManager {
                             width,
                             height,
                             Transparency.OPAQUE);
-            Graphics2D g2 = thumbnail.createGraphics();
-            g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
-            g2.drawImage(original, 0, 0, width, height, null);
-            g2.dispose();
+            Graphics2D g2d = thumbnail.createGraphics();
+            g2d.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR);
+            g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_OFF);
+            g2d.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_SPEED);
+            g2d.setRenderingHint(RenderingHints.KEY_COLOR_RENDERING, RenderingHints.VALUE_COLOR_RENDER_SPEED);
+            g2d.drawImage(original, 0, 0, width, height, null);
+            g2d.dispose();
 
             original.flush();
 
