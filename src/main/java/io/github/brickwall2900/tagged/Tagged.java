@@ -3,19 +3,18 @@ package io.github.brickwall2900.tagged;
 import com.formdev.flatlaf.FlatDarkLaf;
 import com.formdev.flatlaf.FlatLightLaf;
 import io.github.brickwall2900.swing.core.TargetLocator;
+import io.github.brickwall2900.tagged.gif.GifImageWrapperIcon;
 
 import javax.swing.*;
+import javax.swing.Timer;
 import javax.swing.event.ChangeEvent;
 import java.awt.*;
-import java.awt.event.ActionEvent;
-import java.awt.event.KeyEvent;
-import java.awt.event.WindowAdapter;
-import java.awt.event.WindowEvent;
+import java.awt.event.*;
+import java.lang.ref.Reference;
 import java.nio.file.Path;
-import java.util.ArrayList;
+import java.util.*;
 import java.util.List;
-import java.util.Objects;
-import java.util.ResourceBundle;
+import java.util.function.ToLongFunction;
 import java.util.prefs.Preferences;
 
 public class Tagged extends JFrame {
@@ -35,21 +34,29 @@ public class Tagged extends JFrame {
 
     public Tagged() {
         helper = new TaggedHelper(this);
+        iconManager = new IconManager();
 
         preferences = Preferences.userNodeForPackage(Tagged.class);
         loadPreferences();
 
         initContentPane();
         initMenu();
+        initRepaintTimer();
 
         addWindowListener(new WindowAdapter() {
             @Override
             public void windowClosing(WindowEvent e) {
                 onWindowClose();
             }
+
+            @Override
+            public void windowOpened(WindowEvent e) {
+                onWindowOpen();
+            }
         });
 
         setTitle(BUNDLE.getString("title"));
+        setIgnoreRepaint(true);
         pack();
         setLocationByPlatform(true);
         setDefaultCloseOperation(EXIT_ON_CLOSE);
@@ -69,7 +76,7 @@ public class Tagged extends JFrame {
         JList<TaggedHelper.FileTag> list = new JList<>();
         list.setName("FileTagList");
         list.setModel(new DefaultListModel<>());
-        list.setCellRenderer(new TaggedFileListCellRenderer());
+        list.setCellRenderer(new TaggedFileListCellRenderer(iconManager));
         list.setLayoutOrientation(JList.HORIZONTAL_WRAP);
         list.setVisibleRowCount(-1);
         list.setFixedCellWidth(128);
@@ -100,12 +107,22 @@ public class Tagged extends JFrame {
         fileDarkMode.addChangeListener(this::onDarkModeMenuItemChecked);
         fileDarkMode.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_D, KeyEvent.CTRL_DOWN_MASK));
 
+        JCheckBoxMenuItem debug = new JCheckBoxMenuItem(BUNDLE.getString("menu.file.debug"));
+        debug.addActionListener(this::onDebugMenuItemPressed);
+
         fileMenu.add(fileAddLocation);
         fileMenu.add(fileDarkMode);
+        fileMenu.addSeparator();
+        fileMenu.add(debug);
 
         menuBar.add(fileMenu);
 
         setJMenuBar(menuBar);
+    }
+
+    private void initRepaintTimer() {
+        repaintTimer = new Timer(33, this::onRepaintTick);
+        repaintTimer.setRepeats(true);
     }
 
     private void loadPreferences() {
@@ -197,12 +214,80 @@ public class Tagged extends JFrame {
         addLocation();
     }
 
+    private void onDebugMenuItemPressed(ActionEvent e) {
+        Runtime runtime = Runtime.getRuntime();
+
+        JOptionPane optionPane = new JOptionPane();
+        JTextArea textArea = new JTextArea();
+        JScrollPane scrollPane = new JScrollPane(textArea);
+        optionPane.setMessage(scrollPane);
+        optionPane.setMessageType(JOptionPane.INFORMATION_MESSAGE);
+        optionPane.setOptionType(JOptionPane.DEFAULT_OPTION);
+
+        JDialog dialog = optionPane.createDialog(this, "DebugInfo");
+        dialog.setModalityType(Dialog.ModalityType.MODELESS);
+        dialog.setResizable(true);
+
+        Timer dbgTimer = new Timer(250, new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                try {
+                    Set<Reference<Icon>> icons = new HashSet<>(iconManager.getIconCacheMap().values());
+                    int entries = icons.size();
+                    long gifMemoryUsage = 0L;
+                    long gifCanvasMemoryUsage = 0L;
+                    for (Reference<Icon> iconRef : icons) {
+                        Icon icon = iconRef != null ? iconRef.get() : null;
+                        if (icon instanceof GifImageWrapperIcon gifImageWrapperIcon) {
+                            gifMemoryUsage += gifImageWrapperIcon.getMemoryUsage();
+                            gifCanvasMemoryUsage += gifImageWrapperIcon.getCanvasMemoryUsage();
+                        }
+                    }
+                    textArea.setText(BUNDLE.getString("debug")
+                            .formatted(
+                                    gifMemoryUsage,
+                                    gifMemoryUsage / 1024.0 / 1024.0,
+                                    gifCanvasMemoryUsage / 1024.0 / 1024.0,
+                                    entries,
+                                    (runtime.totalMemory() - runtime.freeMemory()) / 1024.0 / 1024.0,
+                                    runtime.freeMemory() / 1024.0 / 1024.0,
+                                    runtime.totalMemory() / 1024.0 / 1024.0,
+                                    iconManager.getMaxEntries()));
+                } catch (Exception x) {
+                    x.printStackTrace();
+                }
+            }
+        });
+        dbgTimer.start();
+        dialog.addWindowListener(new WindowAdapter() {
+            @Override
+            public void windowClosing(WindowEvent e) {
+                dbgTimer.stop();
+            }
+        });
+        dialog.setVisible(true);
+    }
+
+    @SuppressWarnings("unchecked")
+    private void onRepaintTick(ActionEvent actionEvent) {
+        JList<TaggedHelper.FileTag> list = $("FileTagList", JList.class);
+        list.repaint(list.getVisibleRect());
+    }
+
     private void onWindowClose() {
+        repaintTimer.stop();
+        iconManager.shutdown();
         helper.shutdown();
     }
 
+    private void onWindowOpen() {
+        repaintTimer.start();
+    }
+
     private final TaggedHelper helper;
+    private final IconManager iconManager;
     private final List<Path> locations = new ArrayList<>();
     private final Preferences preferences;
+    private Timer repaintTimer;
     private JFileChooser fileChooser;
 }

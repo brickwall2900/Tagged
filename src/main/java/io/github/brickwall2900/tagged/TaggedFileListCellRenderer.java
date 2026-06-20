@@ -1,7 +1,5 @@
 package io.github.brickwall2900.tagged;
 
-import io.github.brickwall2900.tagged.icons.IconProviders;
-
 import javax.swing.*;
 import javax.swing.border.Border;
 import javax.swing.plaf.synth.SynthListUI;
@@ -12,7 +10,11 @@ import java.nio.file.Path;
 public class TaggedFileListCellRenderer extends JLabel implements ListCellRenderer<TaggedHelper.FileTag> {
     private static final Border EMPTY_BORDER = BorderFactory.createEmptyBorder(1, 1, 1, 1);
 
-    public TaggedFileListCellRenderer() {
+    private final IconManager iconManager;
+
+    public TaggedFileListCellRenderer(IconManager iconManager) {
+        this.iconManager = iconManager;
+
         setOpaque(true);
         setName("FileListCellRenderer");
         setBorder(EMPTY_BORDER);
@@ -52,12 +54,13 @@ public class TaggedFileListCellRenderer extends JLabel implements ListCellRender
             setForeground(list.getForeground());
         }
 
-        Icon icon = getIcon();
-        if (icon instanceof ImageIcon imageIcon) {
-            imageIcon.setImageObserver(null);
-        }
-
-        setIcon(IconProviders.getIcon(value.filePath(), list));
+        int width = list.getFixedCellHeight();
+        int height = list.getFixedCellWidth();
+        int listWidth = list.getVisibleRect().width;
+        int listHeight = list.getVisibleRect().height;
+        iconManager.setThumbnailSize(Math.max(width, height));
+        iconManager.setMaxEntries((int) (Math.ceil((double) listWidth / width) * Math.ceil((double) listHeight / height)));
+        setIcon(iconManager.getIcon(value.filePath(), list));
         setText(value.filePath().getFileName().toString());
 
         if (list.getName() == null || !list.getName().equals("ComboBox.list")
