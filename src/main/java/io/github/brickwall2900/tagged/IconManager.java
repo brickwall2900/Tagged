@@ -22,8 +22,6 @@ import java.security.NoSuchAlgorithmException;
 import java.util.*;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
 // i dont deserve friends and i hate myself so fucking much
 public class IconManager {
@@ -36,12 +34,12 @@ public class IconManager {
 
     public final Icon defaultPlaceholderIcon;
     public final FlatSVGIcon.ColorFilter colorFilter;
-    public int thumbnailSize = 32;
+    private int thumbnailSize = 32;
+    private boolean fastTarget = true;
 
     public TaggedHelper helper;
 
-    private final LRUCache<Path, Reference<Icon>> thumbnailCacheLRU = new LRUCache<>(30, this::onItemRemoved);
-    private final Map<Path, Reference<Icon>> thumbnailCache = Collections.synchronizedMap(thumbnailCacheLRU);
+    private final LRUCache<Path, Reference<Icon>> thumbnailCache = new LRUCache<>(30, this::onItemRemoved);
     private final Set<Path> loadingTasks = ConcurrentHashMap.newKeySet();
 
     public IconManager(TaggedHelper helper) {
@@ -59,15 +57,20 @@ public class IconManager {
     }
 
     public Icon getIcon(Path path, Component associatedComponent) {
+        //Timestamped t = new Timestamped();
+        //t.push("thumbnailCacheGet");
         Reference<Icon> iconRef;
         iconRef = thumbnailCache.get(path);
         Icon cachedIcon = iconRef != null ? iconRef.get() : null;
 
         if (cachedIcon != null) {
+            //t.reportPopAndPush("scaleIcon");
             scaleIcon(associatedComponent, cachedIcon);
+            //t.reportAndPop();
             return cachedIcon;
         }
 
+        //t.reportPopAndPush("submit");
         try {
             if (loadingTasks.add(path)) {
                 helper.getExecutor().submit(new LoadTask(associatedComponent, path));
@@ -75,6 +78,8 @@ public class IconManager {
         } catch (Exception e) {
             e.printStackTrace();
         }
+
+        //t.reportAndPop();
 
         return defaultPlaceholderIcon;
     }
@@ -131,14 +136,25 @@ public class IconManager {
     }
 
     public int getMaxEntries() {
-        return thumbnailCacheLRU.getMaxEntries();
+        return thumbnailCache.getMaxEntries();
     }
 
     public void setMaxEntries(int entries) {
-        thumbnailCacheLRU.setMaxEntries(entries);
+        thumbnailCache.setMaxEntries(entries);
     }
 
-    public long getMinimumRefreshTime() {
+    public boolean isFastTargetEnabled() {
+        return fastTarget;
+    }
+
+    public void setFastTargetEnabled(boolean fastTarget) {
+        this.fastTarget = fastTarget;
+    }
+
+    // technically, this function isn't being used
+    // it depends on Map#values
+    // by commenting it i don't have to implement it anymore
+    /*public long getMinimumRefreshTime() {
         long refreshTime = -1;
         Set<Reference<Icon>> icons;
         synchronized (thumbnailCache) {
@@ -155,25 +171,13 @@ public class IconManager {
             }
         }
         return refreshTime;
-    }
+    }*/
 
     public long getMinimumRefreshTime(List<Path> paths) {
         long refreshTime = -1;
-        Map<Path, Reference<Icon>> cacheCopy;
-        synchronized (thumbnailCache) {
-            cacheCopy = new HashMap<>(thumbnailCache);
-        }
 
-        Iterator<Map.Entry<Path, Reference<Icon>>> iterator = cacheCopy.entrySet().iterator();
-        Set<Reference<Icon>> icons = new HashSet<>();
-        while (iterator.hasNext()) {
-            Map.Entry<Path, Reference<Icon>> entry = iterator.next();
-            if (paths.contains(entry.getKey())) {
-                icons.add(entry.getValue());
-            }
-        }
-
-        for (Reference<Icon> iconRef : icons) {
+        for (Path path : paths) {
+            Reference<Icon> iconRef = thumbnailCache.get(path);
             Icon icon = iconRef != null ? iconRef.get() : null;
             if (icon instanceof GifImageWrapperIcon gifImageWrapperIcon) {
                 if (refreshTime == -1) {
@@ -186,13 +190,13 @@ public class IconManager {
         return refreshTime;
     }
 
-    Map<Path, Reference<Icon>> getIconCacheMap() {
+    LRUCache<Path, Reference<Icon>> getIconCacheMap() {
         return thumbnailCache;
     }
 
     private Icon loadGif(Path path, String id) throws IOException {
         try (GifImageWrapperIconIndexedParser parser =
-                     new GifImageWrapperIconIndexedAutoDownsamplerParser(thumbnailSize)) {
+                     new GifImageWrapperFastIconIndexedAutoDownsamplerParser(thumbnailSize, fastTarget)) {
             GifImageWrapperIcon icon = GifImageReader.readImage(path, parser);
             //executor.submit(() -> icon.saveToCache(CACHE_DIR, id));
             return icon;
@@ -208,17 +212,22 @@ public class IconManager {
     }
 
     private void onItemRemoved(Reference<Icon> iconRef) {
-        Icon icon = iconRef.get();
-        if (icon != null) {
-            if (icon instanceof ImageIcon imageIcon) {
-                Image image = imageIcon.getImage();
-                if (image != null) {
-                    image.flush();
+        helper.getExecutor().submit(new Runnable() {
+            @Override
+            public void run() {
+                Icon icon = iconRef.get();
+                if (icon != null) {
+                    if (icon instanceof ImageIcon imageIcon) {
+                        Image image = imageIcon.getImage();
+                        if (image != null) {
+                            image.flush();
+                        }
+                    } else if (icon instanceof GifImageWrapperIcon gifIcon) {
+                        gifIcon.flush();
+                    }
                 }
-            } else if (icon instanceof GifImageWrapperIcon gifIcon) {
-                gifIcon.flush();
             }
-        }
+        });
     }
 
     private static String filenameToHash(String id) {
@@ -324,22 +333,29 @@ public class IconManager {
 
         @Override
         public void run() {
+            //Timestamped t = new Timestamped();
             boolean success = false;
             try {
+                //t.push("run");
                 Icon thumbnail = loadImage(path);
+                //t.reportPopAndPush("put");
                 if (thumbnail != null) {
                     thumbnailCache.put(path, new SoftReference<>(thumbnail));
                     success = true;
                 }
+                //t.reportAndPop();
             } catch (Exception e) {
                 e.printStackTrace();
             } finally {
+                //t.reportAndPopAll();
                 loadingTasks.remove(path);
             }
 
+            //t.push("invokeLaterRepaint");
             if (success) {
                 SwingUtilities.invokeLater(component::repaint);
             }
+            //t.reportAndPop();
         }
     }
 }

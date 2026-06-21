@@ -12,6 +12,9 @@ public class TaggedFileListCellRenderer extends JLabel implements ListCellRender
 
     private final IconManager iconManager;
 
+    private int cellPadding = 32;
+    private int iconLoadedBuffer = 50;
+
     public TaggedFileListCellRenderer(IconManager iconManager) {
         this.iconManager = iconManager;
 
@@ -58,9 +61,9 @@ public class TaggedFileListCellRenderer extends JLabel implements ListCellRender
         int height = list.getFixedCellWidth();
         int listWidth = list.getVisibleRect().width;
         int listHeight = list.getVisibleRect().height;
-        iconManager.setThumbnailSize(Math.max(Math.max(width, height) - 32, 32));
+        iconManager.setThumbnailSize(Math.max(Math.max(width, height) - cellPadding, cellPadding));
         int entries = (int) (Math.ceil((double) listWidth / width) * Math.ceil((double) listHeight / height));
-        entries += (int) (entries * .25);
+        entries += iconLoadedBuffer;
         iconManager.setMaxEntries(entries);
 
         setIcon(iconManager.getIcon(value.filePath(), list));
@@ -87,5 +90,21 @@ public class TaggedFileListCellRenderer extends JLabel implements ListCellRender
         setBorder(border);
 
         return this;
+    }
+
+    public int getCellPadding() {
+        return cellPadding;
+    }
+
+    public void setCellPadding(int cellPadding) {
+        this.cellPadding = cellPadding;
+    }
+
+    public int getIconLoadedBuffer() {
+        return iconLoadedBuffer;
+    }
+
+    public void setIconLoadedBuffer(int iconLoadedBuffer) {
+        this.iconLoadedBuffer = iconLoadedBuffer;
     }
 }

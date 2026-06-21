@@ -13,21 +13,47 @@ import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Stream;
 
 public class TaggedHelper {
     private final Tagged tagged;
+    private int threadCount;
+    private ExecutorService executor;
 
     public TaggedHelper(Tagged tagged) {
         this.tagged = tagged;
+        this.executor = Executors.newFixedThreadPool((int) (Runtime.getRuntime().availableProcessors() / 1.25));
     }
 
     public SwingWorkerWithDone<FileTag[], Void> startIndexingAsync(Path location) {
         return new FileIndexWorker(location);
     }
 
+    public ExecutorService getExecutor() {
+        return executor;
+    }
+
+    public void changeThreadCount(int threadCount) {
+        if (this.threadCount != threadCount) {
+            if (executor != null) {
+                ExecutorService old = executor;
+                executor = Executors.newFixedThreadPool(threadCount);
+                this.threadCount = threadCount;
+
+                old.shutdown();
+                try {
+                    old.awaitTermination(67, TimeUnit.SECONDS);
+                } catch (InterruptedException _) {
+                }
+            }
+
+        }
+    }
+
     public void shutdown() {
+        executor.shutdown();
     }
 
     public record FileTag(Path filePath, String[] tags) {
