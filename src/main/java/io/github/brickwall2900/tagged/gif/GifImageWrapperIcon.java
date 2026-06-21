@@ -5,6 +5,7 @@ import javax.swing.*;
 import java.awt.*;
 import java.awt.image.*;
 import java.io.*;
+import java.lang.ref.Cleaner;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
@@ -175,7 +176,8 @@ public class GifImageWrapperIcon implements Icon {
             byte disposalMethod,
             boolean transparencyEnabled,
             int transparencyIndex,
-            double sampleSize) {
+            double sampleSize,
+            boolean fastTarget) {
         int scaledFrameWidth = (int) Math.max(1, imageWidth / sampleSize);
         int scaledFrameHeight = (int) Math.max(1, imageHeight / sampleSize);
         int scaledLeft = (int) (imageLeft / sampleSize);
@@ -193,8 +195,13 @@ public class GifImageWrapperIcon implements Icon {
         }
 
         IndexColorModel icm = new IndexColorModel(
-                8, colorTable.length, colorTable, 0, false,
-                transparencyEnabled ? transparencyIndex : -1, DataBuffer.TYPE_BYTE
+                8,
+                colorTable.length,
+                colorTable,
+                0,
+                false,
+                transparencyEnabled ? transparencyIndex : -1,
+                DataBuffer.TYPE_BYTE
         );
 
         BufferedImage target = new BufferedImage(
@@ -214,9 +221,33 @@ public class GifImageWrapperIcon implements Icon {
             minDelayTime = Math.min(minDelayTime, delayTime);
         }
 
+        VolatileImage fastTargetImage = null;
+        if (fastTarget) {
+            fastTargetImage = GraphicsEnvironment.getLocalGraphicsEnvironment()
+                    .getDefaultScreenDevice()
+                    .getDefaultConfiguration()
+                    .createCompatibleVolatileImage(
+                            scaledFrameWidth,
+                            scaledFrameHeight,
+                            Transparency.BITMASK
+                    );
+            Graphics2D g2d = null;
+            try {
+                g2d = fastTargetImage.createGraphics();
+                g2d.setComposite(AlphaComposite.Src);
+                g2d.setColor(Color.BLACK);
+                g2d.clearRect(0, 0, imageWidth, imageHeight);
+                g2d.drawImage(target, 0, 0, null);
+            } finally {
+                if (g2d != null) {
+                    g2d.dispose();
+                }
+            }
+        }
+
         totalDurationMs += delayTime;
         images.add(new ImageFrame(
-                target,
+                fastTarget ? fastTargetImage : target,
                 scaledLeft,
                 scaledTop,
                 scaledFrameWidth,
@@ -251,7 +282,7 @@ public class GifImageWrapperIcon implements Icon {
                     zipOutputStream.putNextEntry(entry);
 
                     ImageFrame image = images.get(i);
-                    ImageIO.write(image.image, "BMP", zipOutputStream);
+                    //ImageIO.write(image.image, "BMP", zipOutputStream);
                     properties.setProperty(String.valueOf(i), "%d,%d,%d,%d,%d,%d,%d".formatted(
                             image.left,
                             image.top,
@@ -264,15 +295,15 @@ public class GifImageWrapperIcon implements Icon {
 
                     zipOutputStream.closeEntry();
                 }
-                properties.put("count", String.valueOf(images.size()));
-                properties.put("width", String.valueOf(canvasWidth));
-                properties.put("height", String.valueOf(canvasHeight));
-                properties.put("scaledWidth", String.valueOf(scaledWidth));
-                properties.put("scaledHeight", String.valueOf(scaledHeight));
-                properties.put("backgroundColorIndex", String.valueOf(backgroundColorIndex));
-                properties.put("imageCount", String.valueOf(imageCount));
-                properties.put("loopCount", String.valueOf(loopCount));
-                properties.put("totalDurationMs", String.valueOf(totalDurationMs));
+                properties.setProperty("count", String.valueOf(images.size()));
+                properties.setProperty("width", String.valueOf(canvasWidth));
+                properties.setProperty("height", String.valueOf(canvasHeight));
+                properties.setProperty("scaledWidth", String.valueOf(scaledWidth));
+                properties.setProperty("scaledHeight", String.valueOf(scaledHeight));
+                properties.setProperty("backgroundColorIndex", String.valueOf(backgroundColorIndex));
+                properties.setProperty("imageCount", String.valueOf(imageCount));
+                properties.setProperty("loopCount", String.valueOf(loopCount));
+                properties.setProperty("totalDurationMs", String.valueOf(totalDurationMs));
 
                 ZipEntry metaFile = new ZipEntry("meta");
                 zipOutputStream.putNextEntry(metaFile);
@@ -332,8 +363,12 @@ public class GifImageWrapperIcon implements Icon {
                 .getDefaultScreenDevice()
                 .getDefaultConfiguration();
 
-        canvas.validate(graphicsConfiguration);
-        lastFrame.validate(graphicsConfiguration);
+        if (canvas.contentsLost()) {
+            canvas.validate(graphicsConfiguration);
+        }
+        if (lastFrame.contentsLost()) {
+            lastFrame.validate(graphicsConfiguration);
+        }
 
         // if looped then fuck everything
         if (targetIndex < lastRenderedIndex || lastRenderedIndex == -1) {
@@ -373,6 +408,10 @@ public class GifImageWrapperIcon implements Icon {
                 g2d.setComposite(AlphaComposite.Src);
                 g2d.drawImage(canvas, 0, 0, null);
                 g2d.dispose();
+            }
+
+            if (nextFrame.image instanceof VolatileImage volatileImage && volatileImage.contentsLost()) {
+                volatileImage.validate(graphicsConfiguration);
             }
 
             // draw this frame
@@ -415,6 +454,8 @@ public class GifImageWrapperIcon implements Icon {
         for (ImageFrame frame : images) {
             frame.image.flush();
         }
+        canvas.flush();
+        lastFrame.flush();
     }
 
     @Override
@@ -437,27 +478,37 @@ public class GifImageWrapperIcon implements Icon {
 
     public long getMemoryUsage() {
         long usage = 0;
+        final int bytesPerPixel = Math.ceilDiv(GraphicsEnvironment.getLocalGraphicsEnvironment()
+                .getDefaultScreenDevice()
+                .getDefaultConfiguration()
+                .getColorModel().getPixelSize(), 8);
         for (ImageFrame frame : images) {
-            byte[] targetPixels = ((DataBufferByte) frame.image.getRaster().getDataBuffer()).getData();
-            usage += targetPixels.length;
+            if (frame.image instanceof BufferedImage bufferedImage) {
+                int type = bufferedImage.getType();
+                usage += switch (type) {
+                    case BufferedImage.TYPE_INT_ARGB -> frame.width * frame.height * 4;
+                    case BufferedImage.TYPE_BYTE_INDEXED -> frame.width * frame.height;
+                    // we don't know lol
+                    default -> frame.width * frame.height;
+                };
+            } else {
+                usage += (long) bytesPerPixel * frame.width * frame.height;
+            }
         }
         if (canvas != null) {
             // estimation
-            usage += ((long) canvasWidth * canvasHeight * 4) * 2;
+            // assume ARGB lol
+            usage += ((long) canvasWidth * canvasHeight * bytesPerPixel) * 2;
+            // consider canvas and last frame canvas
         }
         return usage;
     }
 
     public long getCanvasMemoryUsage() {
-        long usage = 0;
-        if (canvas != null) {
-            // estimation
-            usage += ((long) canvasWidth * canvasHeight * 4) * 2;
-        }
-        return usage;
+        return getMemoryUsage();
     }
 
-    private record ImageFrame(BufferedImage image,
+    private record ImageFrame(Image image,
                               int left,
                               int top,
                               int width,

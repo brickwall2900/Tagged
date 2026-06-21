@@ -9,9 +9,11 @@ import java.util.Objects;
 // AbstractEmployeeJobSwitchIndexedReversedParserFactoryBuilderWrapper ahh type shit
 public class GifImageWrapperIconIndexedDownsampledParser extends GifImageWrapperIconIndexedParser {
     private final double sampleSize;
+    private final boolean fastTarget;
 
-    public GifImageWrapperIconIndexedDownsampledParser(double sampleSize) {
+    public GifImageWrapperIconIndexedDownsampledParser(double sampleSize, boolean fastTarget) {
         this.sampleSize = sampleSize;
+        this.fastTarget = fastTarget;
     }
 
     @Override
@@ -33,7 +35,8 @@ public class GifImageWrapperIconIndexedDownsampledParser extends GifImageWrapper
                 disposalMethod,
                 transparencyEnabled,
                 transparencyIndex,
-                sampleSize
+                sampleSize,
+                fastTarget
         );
     }
 

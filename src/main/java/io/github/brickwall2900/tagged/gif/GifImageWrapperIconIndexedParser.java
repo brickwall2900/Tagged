@@ -28,7 +28,8 @@ public class GifImageWrapperIconIndexedParser extends GifImagePixelIndexedParser
                 disposalMethod,
                 transparencyEnabled,
                 transparencyIndex,
-                1);
+                1,
+                true);
     }
 
     @Override

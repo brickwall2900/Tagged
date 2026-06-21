@@ -1,11 +1,14 @@
 package io.github.brickwall2900.tagged.gif;
 
 // SON WHAT IS THIS
-public class GifImageWrapperIconIndexedAutoDownsamplerParser extends GifImageWrapperIconIndexedParser {
+public class GifImageWrapperFastIconIndexedAutoDownsamplerParser extends GifImageWrapperIconIndexedParser {
     private final int imageSize;
+    private final boolean fastTarget;
+    private double ratio;
 
-    public GifImageWrapperIconIndexedAutoDownsamplerParser(int imageSize) {
+    public GifImageWrapperFastIconIndexedAutoDownsamplerParser(int imageSize, boolean fastTarget) {
         this.imageSize = imageSize;
+        this.fastTarget = fastTarget;
     }
 
     @Override
@@ -15,9 +18,6 @@ public class GifImageWrapperIconIndexedAutoDownsamplerParser extends GifImageWra
                                   int imageTop,
                                   int imageWidth,
                                   int imageHeight) {
-        double ratio = (double) canvasWidth / imageSize;
-        ratio = Math.max(ratio, (double) canvasHeight / imageSize);
-
         wrapper.loopCount = timesToLoop;
         wrapper.makeImageIndexed(
                 indices,
@@ -30,7 +30,8 @@ public class GifImageWrapperIconIndexedAutoDownsamplerParser extends GifImageWra
                 disposalMethod,
                 transparencyEnabled,
                 transparencyIndex,
-                ratio
+                ratio,
+                fastTarget
         );
     }
 
@@ -54,8 +55,9 @@ public class GifImageWrapperIconIndexedAutoDownsamplerParser extends GifImageWra
                 globalColorTable
         );
 
-        double ratio = (double) canvasWidth / imageSize;
+        ratio = (double) canvasWidth / imageSize;
         ratio = Math.max(ratio, (double) canvasHeight / imageSize);
+
         int scaledFrameWidth = (int) Math.max(1, canvasWidth / ratio);
         int scaledFrameHeight = (int) Math.max(1, canvasHeight / ratio);
 
