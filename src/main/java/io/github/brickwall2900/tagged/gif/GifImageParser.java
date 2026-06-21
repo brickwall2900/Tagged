@@ -1,8 +1,11 @@
 package io.github.brickwall2900.tagged.gif;
 
+// i need suggestions
+// composition over inheritance?
+// and how do i make it composite?
 public abstract class GifImageParser<R> implements GifImageReaderVisitor<R>, AutoCloseable {
-    final byte MAX_CODE_SIZE = 12;
-    final short MAX_DICTIONARY_SIZE = 1 << MAX_CODE_SIZE;
+    static final byte MAX_CODE_SIZE = 12;
+    static final short MAX_DICTIONARY_SIZE = 1 << MAX_CODE_SIZE;
     int[] dictionary = new int[MAX_DICTIONARY_SIZE];
 
     protected int canvasWidth, canvasHeight;
@@ -74,7 +77,7 @@ public abstract class GifImageParser<R> implements GifImageReaderVisitor<R>, Aut
     // i just found out the source code for the native GIF image decoder in Java
     // they use a native method for ts
     // how did it come to this point wtf
-    private void decompressGifImageBlock(
+    private static void decompressGifImageBlock(
             final int[] dictionary,
             final byte[] imageCompressedDataBlock,
             final byte[] indexBuffer,

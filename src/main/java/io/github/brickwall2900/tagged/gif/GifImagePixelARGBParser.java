@@ -9,12 +9,12 @@ public abstract class GifImagePixelARGBParser<R> extends GifImageParser<R> {
     };
 
     public abstract void decodeImagePixels(
-            int[] pixels,
-            int[] colorTable,
-            int imageLeft,
-            int imageTop,
-            int imageWidth,
-            int imageHeight
+            final int[] pixels,
+            final int[] colorTable,
+            final int imageLeft,
+            final int imageTop,
+            final int imageWidth,
+            final int imageHeight
     );
 
     @Override

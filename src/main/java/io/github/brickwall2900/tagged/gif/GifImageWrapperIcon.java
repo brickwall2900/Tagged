@@ -252,7 +252,7 @@ public class GifImageWrapperIcon implements Icon {
 
                     ImageFrame image = images.get(i);
                     ImageIO.write(image.image, "BMP", zipOutputStream);
-                    properties.put(String.valueOf(i), "%d,%d,%d,%d,%d,%d,%d".formatted(
+                    properties.setProperty(String.valueOf(i), "%d,%d,%d,%d,%d,%d,%d".formatted(
                             image.left,
                             image.top,
                             image.width,
@@ -328,13 +328,12 @@ public class GifImageWrapperIcon implements Icon {
     }
 
     private void drawFrames(int targetIndex) {
-        canvas.validate(GraphicsEnvironment.getLocalGraphicsEnvironment()
+        GraphicsConfiguration graphicsConfiguration = GraphicsEnvironment.getLocalGraphicsEnvironment()
                 .getDefaultScreenDevice()
-                .getDefaultConfiguration());
+                .getDefaultConfiguration();
 
-        lastFrame.validate(GraphicsEnvironment.getLocalGraphicsEnvironment()
-                .getDefaultScreenDevice()
-                .getDefaultConfiguration());
+        canvas.validate(graphicsConfiguration);
+        lastFrame.validate(graphicsConfiguration);
 
         // if looped then fuck everything
         if (targetIndex < lastRenderedIndex || lastRenderedIndex == -1) {

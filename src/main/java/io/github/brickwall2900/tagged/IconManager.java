@@ -38,15 +38,14 @@ public class IconManager {
     public final FlatSVGIcon.ColorFilter colorFilter;
     public int thumbnailSize = 32;
 
-    public final ExecutorService executor = Executors.newFixedThreadPool(
-            (int) (Runtime.getRuntime().availableProcessors() / 1.25));
-    //public final ExecutorService executor = Executors.newSingleThreadExecutor();
+    public TaggedHelper helper;
 
     private final LRUCache<Path, Reference<Icon>> thumbnailCacheLRU = new LRUCache<>(30, this::onItemRemoved);
     private final Map<Path, Reference<Icon>> thumbnailCache = Collections.synchronizedMap(thumbnailCacheLRU);
     private final Set<Path> loadingTasks = ConcurrentHashMap.newKeySet();
 
-    public IconManager() {
+    public IconManager(TaggedHelper helper) {
+        this.helper = helper;
         try {
             defaultPlaceholderIcon = new FlatSVGIcon(new ByteArrayInputStream(SVGFILE.getBytes(StandardCharsets.UTF_8)));
             colorFilter = new FlatSVGIcon.ColorFilter();
@@ -69,8 +68,12 @@ public class IconManager {
             return cachedIcon;
         }
 
-        if (loadingTasks.add(path)) {
-            executor.submit(new LoadTask(associatedComponent, path));
+        try {
+            if (loadingTasks.add(path)) {
+                helper.getExecutor().submit(new LoadTask(associatedComponent, path));
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
         }
 
         return defaultPlaceholderIcon;
@@ -189,7 +192,7 @@ public class IconManager {
 
     private Icon loadGif(Path path, String id) throws IOException {
         try (GifImageWrapperIconIndexedParser parser =
-                     new GifImageWrapperIconIndexedDownsampledParser(2)) {
+                     new GifImageWrapperIconIndexedAutoDownsamplerParser(thumbnailSize)) {
             GifImageWrapperIcon icon = GifImageReader.readImage(path, parser);
             //executor.submit(() -> icon.saveToCache(CACHE_DIR, id));
             return icon;
@@ -198,6 +201,8 @@ public class IconManager {
         //return new ImageIcon(path.toUri().toURL());
     }
 
+    // never used
+    // i don't know how to make cached images eco-friendly small
     private Icon loadCachedGif(String id) throws UncheckedIOException {
         return new GifImageWrapperIcon(CACHE_DIR, id);
     }
@@ -306,7 +311,6 @@ public class IconManager {
     }
 
     public void shutdown() {
-        executor.shutdown();
     }
 
     private class LoadTask implements Runnable {

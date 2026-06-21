@@ -1,13 +1,12 @@
 package io.github.brickwall2900.tagged.gif;
 
-import java.io.ByteArrayInputStream;
-import java.io.DataInputStream;
-import java.io.IOException;
-import java.util.Objects;
+// SON WHAT IS THIS
+public class GifImageWrapperIconIndexedAutoDownsamplerParser extends GifImageWrapperIconIndexedParser {
+    private final int imageSize;
 
-public class GifImageWrapperIconIndexedParser extends GifImagePixelIndexedParser<GifImageWrapperIcon> {
-    protected GifImageWrapperIcon wrapper = new GifImageWrapperIcon();
-    protected short timesToLoop;
+    public GifImageWrapperIconIndexedAutoDownsamplerParser(int imageSize) {
+        this.imageSize = imageSize;
+    }
 
     @Override
     public void decodeImageIndexed(byte[] indices,
@@ -16,6 +15,9 @@ public class GifImageWrapperIconIndexedParser extends GifImagePixelIndexedParser
                                   int imageTop,
                                   int imageWidth,
                                   int imageHeight) {
+        double ratio = (double) canvasWidth / imageSize;
+        ratio = Math.max(ratio, (double) canvasHeight / imageSize);
+
         wrapper.loopCount = timesToLoop;
         wrapper.makeImageIndexed(
                 indices,
@@ -28,7 +30,8 @@ public class GifImageWrapperIconIndexedParser extends GifImagePixelIndexedParser
                 disposalMethod,
                 transparencyEnabled,
                 transparencyIndex,
-                1);
+                ratio
+        );
     }
 
     @Override
@@ -51,44 +54,15 @@ public class GifImageWrapperIconIndexedParser extends GifImagePixelIndexedParser
                 globalColorTable
         );
 
+        double ratio = (double) canvasWidth / imageSize;
+        ratio = Math.max(ratio, (double) canvasHeight / imageSize);
+        int scaledFrameWidth = (int) Math.max(1, canvasWidth / ratio);
+        int scaledFrameHeight = (int) Math.max(1, canvasHeight / ratio);
+
         wrapper.setBackgroundColorIndex(backgroundColorIndex & 0xFF);
-        wrapper.setCanvasWidth(canvasWidth);
-        wrapper.setScaledWidth(canvasWidth);
-        wrapper.setCanvasHeight(canvasHeight);
-        wrapper.setScaledHeight(canvasHeight);
-    }
-
-    @Override
-    public void onHeaderRead(HeaderVersion version) {
-    }
-
-    @Override
-    public void onApplicationExtensionRead(String id,
-                                           String code,
-                                           byte[] subBlocks) {
-        if (Objects.equals(id, "NETSCAPE") && Objects.equals(code, "2.0")) {
-            try (DataInputStream subBlockStream = new DataInputStream(new ByteArrayInputStream(subBlocks))) {
-                subBlockStream.skipBytes(1);
-                timesToLoop = subBlockStream.readShort();
-            } catch (IOException e) {
-                throw new InternalError("never reaching here", e);
-            }
-        }
-    }
-
-    @Override
-    public void onCommentExtensionRead(byte[] subBlocks) {
-    }
-
-    @Override
-    public GifImageWrapperIcon getResult() {
-        wrapper.finishedDecoding();
-        return wrapper;
-    }
-
-    @Override
-    public void close() {
-        super.close();
-        wrapper = null;
+        wrapper.setCanvasWidth(scaledFrameWidth);
+        wrapper.setScaledWidth(scaledFrameWidth);
+        wrapper.setCanvasHeight(scaledFrameHeight);
+        wrapper.setScaledHeight(scaledFrameHeight);
     }
 }

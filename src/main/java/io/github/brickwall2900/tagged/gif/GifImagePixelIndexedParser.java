@@ -11,12 +11,12 @@ public abstract class GifImagePixelIndexedParser<R> extends GifImageParser<R> {
     };
 
     public abstract void decodeImageIndexed(
-            byte[] indices,
-            int[] colorTable,
-            int imageLeft,
-            int imageTop,
-            int imageWidth,
-            int imageHeight
+            final byte[] indices,
+            final int[] colorTable,
+            final int imageLeft,
+            final int imageTop,
+            final int imageWidth,
+            final int imageHeight
     );
 
     @Override
