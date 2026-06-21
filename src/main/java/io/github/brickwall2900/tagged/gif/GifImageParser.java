@@ -30,17 +30,17 @@ public abstract class GifImageParser<R> implements GifImageReaderVisitor<R>, Aut
     }
 
     @Override
-    public void onImageBlockRead(int imageLeft,
-                                 int imageTop,
-                                 int imageWidth,
-                                 int imageHeight,
-                                 boolean localColorTablePresent,
-                                 int localColorTableSize,
-                                 boolean sortFlag,
-                                 boolean interlace,
-                                 byte minimumCodeSize,
-                                 int[] localColorTable,
-                                 byte[] subBlocks) {
+    public void onImageBlockRead(final int imageLeft,
+                                 final int imageTop,
+                                 final int imageWidth,
+                                 final int imageHeight,
+                                 final boolean localColorTablePresent,
+                                 final int localColorTableSize,
+                                 final boolean sortFlag,
+                                 final boolean interlace,
+                                 final byte minimumCodeSize,
+                                 final int[] localColorTable,
+                                 final byte[] subBlocks) {
         final int[] colorTable = localColorTable != null
                 ? localColorTable : globalColorTable;
         final byte[] indices = new byte[imageWidth * imageHeight];
@@ -70,12 +70,17 @@ public abstract class GifImageParser<R> implements GifImageReaderVisitor<R>, Aut
     // here comes the LZW type shit
     // and its unreadable wow
     // what the fuck did i do
+
+    // i just found out the source code for the native GIF image decoder in Java
+    // they use a native method for ts
+    // how did it come to this point wtf
     private void decompressGifImageBlock(
             final int[] dictionary,
             final byte[] imageCompressedDataBlock,
             final byte[] indexBuffer,
             final int minimumCodeSize
     ) {
+        // i wonder what JIT optimizations can be applied here
         final int clearCode = (1 << minimumCodeSize);
         final int eoiCode = (clearCode + 1);
 
@@ -89,6 +94,16 @@ public abstract class GifImageParser<R> implements GifImageReaderVisitor<R>, Aut
             // length: ((dictionary[code] >>> 20) & 0xFFF)
             // prefix: (short) ((dictionary[code] >>> 8) & 0xFFF)
             // suffix: (byte) (dictionary[code])
+
+            // suffix is the stored byte
+            // prefix is the next index of the suffix you read
+            // prefix value 4095 and above indicates a root prefix which means it's the very end please stop reading
+            // length is the count of how many prefixes u gotta read starting from an index
+            // its cached here so we don't need a separate array to write to the index buffer
+
+            // suffix is 8 bits since it's a byte
+            // prefix is 12 bits since it's 0 up to the dictionary size
+            // length is 12 bits since the max possible lengths you read from the prefix is also the dict size
         }
 
         int dictionarySize = clearCode + 2;
@@ -165,19 +180,20 @@ public abstract class GifImageParser<R> implements GifImageReaderVisitor<R>, Aut
                 indexBufferCursor += length;
 
                 int s = lastCode;
-                int writeCursor = targetCursor + length - 2;
+                final int k = targetCursor + length - 1;
+                int writeCursor = k - 1;
                 while (s <= 4094) {
                     indexBuffer[writeCursor--] = (byte) (dictionary[s]);
                     s = (short) ((dictionary[s] >>> 8) & 0xFFF);
                 }
                 // append k
-                indexBuffer[targetCursor + length - 1] = indexBuffer[targetCursor];
+                indexBuffer[k] = indexBuffer[targetCursor];
             } else {
                 break;
             }
 
             if (lastCode != -1 && dictionarySize < MAX_DICTIONARY_SIZE) {
-                // dictionary // long = 0bllllllllllllppppppppppppssssssss
+                // dictionary // int = 0bllllllllllllppppppppppppssssssss
                 short nextLength = (short) (((dictionary[lastCode] >>> 20) & 0xFFF) + 1);
                 dictionary[dictionarySize++] = (nextLength << 20)
                         | (lastCode << 8)
