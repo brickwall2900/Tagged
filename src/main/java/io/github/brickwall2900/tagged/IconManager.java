@@ -11,6 +11,7 @@ import javax.swing.*;
 import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.awt.image.ImageObserver;
+import java.awt.image.RenderedImage;
 import java.io.*;
 import java.lang.ref.Reference;
 import java.lang.ref.SoftReference;
@@ -22,6 +23,7 @@ import java.security.NoSuchAlgorithmException;
 import java.util.*;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
 
 // i dont deserve friends and i hate myself so fucking much
 public class IconManager {
@@ -39,6 +41,7 @@ public class IconManager {
 
     public TaggedHelper helper;
 
+    private final AtomicLong loadId = new AtomicLong();
     private final LRUCache<Path, Reference<Icon>> thumbnailCache = new LRUCache<>(30, this::onItemRemoved);
     private final Set<Path> loadingTasks = ConcurrentHashMap.newKeySet();
 
@@ -73,7 +76,7 @@ public class IconManager {
         //t.reportPopAndPush("submit");
         try {
             if (loadingTasks.add(path)) {
-                helper.getExecutor().submit(new LoadTask(associatedComponent, path));
+                helper.getExecutor().submit(new LoadTask(loadId.getAndIncrement(), associatedComponent, path));
             }
         } catch (Exception e) {
             e.printStackTrace();
@@ -87,7 +90,7 @@ public class IconManager {
     private void rescale(int[] widthHeight) {
         int width = widthHeight[0];
         int height = widthHeight[1];
-        if (width > thumbnailSize || height > thumbnailSize) {
+        //if (width > thumbnailSize || height > thumbnailSize) {
             if (width > height) {
                 height = (height * thumbnailSize) / width;
                 width = thumbnailSize;
@@ -95,7 +98,7 @@ public class IconManager {
                 width = (width * thumbnailSize) / height;
                 height = thumbnailSize;
             }
-        }
+        //}
         widthHeight[0] = width;
         widthHeight[1] = height;
     }
@@ -122,8 +125,8 @@ public class IconManager {
             }
             int[] wh = new int[] { gifIcon.getIconWidth(), gifIcon.getIconHeight() };
             rescale(wh);
-            gifIcon.setScaledWidth(wh[0]);
-            gifIcon.setScaledHeight(wh[1]);
+            gifIcon.setPostScaleWidth(wh[0]);
+            gifIcon.setPostScaleHeight(wh[1]);
         }
     }
 
@@ -196,7 +199,7 @@ public class IconManager {
 
     private Icon loadGif(Path path, String id) throws IOException {
         try (GifImageWrapperIconIndexedParser parser =
-                     new GifImageWrapperFastIconIndexedAutoDownsamplerParser(thumbnailSize, fastTarget)) {
+                     new GifImageWrapperFastIconIndexedAutoDownsamplerParser(Math.min(thumbnailSize, 32), fastTarget)) {
             GifImageWrapperIcon icon = GifImageReader.readImage(path, parser);
             //executor.submit(() -> icon.saveToCache(CACHE_DIR, id));
             return icon;
@@ -251,7 +254,7 @@ public class IconManager {
                 return null;
             }
 
-            String id = filenameToHash(path.toString());
+            String id = filenameToHash(path.toString() + thumbnailSize);
 
             Path cachePath = CACHE_DIR.resolve(id);
             if (path.getFileName().toString().toLowerCase().endsWith(".gif")) {
@@ -278,25 +281,31 @@ public class IconManager {
                 return null;
             }
 
-            int width = original.getWidth();
-            int height = original.getHeight();
-            if (width > thumbnailSize || height > thumbnailSize) {
+            int width = original.getWidth() / 2;
+            int height = original.getHeight() / 2;
+            int thumbnailSizeDiv2 = thumbnailSize;
+            if (width > thumbnailSizeDiv2 || height > thumbnailSizeDiv2) {
                 if (width > height) {
-                    height = (height * thumbnailSize) / width;
-                    width = thumbnailSize;
+                    height = (height * thumbnailSizeDiv2) / width;
+                    width = thumbnailSizeDiv2;
                 } else {
-                    width = (width * thumbnailSize) / height;
-                    height = thumbnailSize;
+                    width = (width * thumbnailSizeDiv2) / height;
+                    height = thumbnailSizeDiv2;
                 }
             }
 
-            BufferedImage thumbnail = GraphicsEnvironment.getLocalGraphicsEnvironment()
-                    .getDefaultScreenDevice()
-                    .getDefaultConfiguration()
-                    .createCompatibleImage(
-                            width,
-                            height,
-                            Transparency.OPAQUE);
+            BufferedImage thumbnail;
+            if (fastTarget) {
+                thumbnail = GraphicsEnvironment.getLocalGraphicsEnvironment()
+                        .getDefaultScreenDevice()
+                        .getDefaultConfiguration()
+                        .createCompatibleImage(
+                                width,
+                                height,
+                                Transparency.OPAQUE);
+            } else {
+                thumbnail = new BufferedImage(width, height, BufferedImage.TYPE_BYTE_INDEXED);
+            }
             Graphics2D g2d = thumbnail.createGraphics();
             g2d.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR);
             g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_OFF);
@@ -311,7 +320,7 @@ public class IconManager {
                 ImageIO.write(thumbnail, "JPG", outputStream);
             }
 
-            return new ScaledImageIcon(new ImageIcon(thumbnail));
+            return new ScaledImageIcon(new ImageIcon(original));
 
         } catch (IOException e) {
             e.printStackTrace();
@@ -323,10 +332,12 @@ public class IconManager {
     }
 
     private class LoadTask implements Runnable {
+        private final long id;
         private final Component component;
         private final Path path;
 
-        private LoadTask(Component component, Path path) {
+        private LoadTask(long id, Component component, Path path) {
+            this.id = id;
             this.component = component;
             this.path = path;
         }
@@ -340,7 +351,7 @@ public class IconManager {
                 Icon thumbnail = loadImage(path);
                 //t.reportPopAndPush("put");
                 if (thumbnail != null) {
-                    thumbnailCache.put(path, new SoftReference<>(thumbnail));
+                    thumbnailCache.put(path, new SoftReference<>(thumbnail), id);
                     success = true;
                 }
                 //t.reportAndPop();

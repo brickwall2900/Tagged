@@ -1,7 +1,5 @@
 package io.github.brickwall2900.tagged;
 
-import java.awt.image.BufferedImage;
-import java.lang.reflect.Array;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
@@ -39,7 +37,7 @@ public class LRUCache<K, V> {
         boolean seen = false;
         Map.Entry<K, Entry<V>> best = null;
         Comparator<Map.Entry<K, Entry<V>>> comparator =
-                Comparator.comparingLong(x -> x.getValue().addedTimestamp);
+                Comparator.comparingLong(x -> x.getValue().id);
         for (Map.Entry<K, Entry<V>> vEntry : internalMap.entrySet()) {
             if (!seen || comparator.compare(vEntry, best) < 0) {
                 seen = true;
@@ -50,6 +48,10 @@ public class LRUCache<K, V> {
     }
 
     public void put(K key, V value) {
+        put(key, value, System.currentTimeMillis());
+    }
+
+    public void put(K key, V value, long id) {
         Map.Entry<K, Entry<V>> entry = firstEntry();
         while (entry != null) {
             if (removeEldestEntry(entry.getValue())) {
@@ -203,5 +205,5 @@ public class LRUCache<K, V> {
         }
     }
 
-    private record Entry<V>(V value, long addedTimestamp) {}
+    private record Entry<V>(V value, long id) {}
 }

@@ -398,6 +398,7 @@ public class Tagged extends JFrame {
             preferences.putInt(PREF_KEY_CACHE_SIZE_LIMIT, Math.clamp(options.cacheSizeLimit(), 0, Integer.MAX_VALUE / 1024 / 1024));
             preferences.putInt(PREF_KEY_THREAD_COUNT, options.threads());
             preferences.putBoolean(PREF_KEY_DARK_MODE, options.darkMode());
+            preferences.putBoolean(PREF_KEY_FAST_TARGET, options.fastTarget());
 
             setDarkMode(options.darkMode(), optionDialog);
             // specifically for dark mode ;-;);

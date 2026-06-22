@@ -64,7 +64,9 @@ public class GifImageWrapperFastIconIndexedAutoDownsamplerParser extends GifImag
         wrapper.setBackgroundColorIndex(backgroundColorIndex & 0xFF);
         wrapper.setCanvasWidth(scaledFrameWidth);
         wrapper.setScaledWidth(scaledFrameWidth);
+        wrapper.setPostScaleWidth(scaledFrameWidth);
         wrapper.setCanvasHeight(scaledFrameHeight);
         wrapper.setScaledHeight(scaledFrameHeight);
+        wrapper.setPostScaleHeight(scaledFrameHeight);
     }
 }

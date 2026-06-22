@@ -22,6 +22,7 @@ public class GifImageWrapperIcon implements Icon {
     private int imageCount;
     private int backgroundColorIndex;
     private int scaledWidth, scaledHeight;
+    private int postScaleWidth, postScaleHeight;
 
     private VolatileImage canvas;
     private VolatileImage lastFrame;
@@ -118,6 +119,22 @@ public class GifImageWrapperIcon implements Icon {
 
     public void setScaledHeight(int scaledHeight) {
         this.scaledHeight = scaledHeight;
+    }
+
+    public int getPostScaleWidth() {
+        return postScaleWidth;
+    }
+
+    public void setPostScaleWidth(int postScaleWidth) {
+        this.postScaleWidth = postScaleWidth;
+    }
+
+    public int getPostScaleHeight() {
+        return postScaleHeight;
+    }
+
+    public void setPostScaleHeight(int postScaleHeight) {
+        this.postScaleHeight = postScaleHeight;
     }
 
     public int getBackgroundColorIndex() {
@@ -221,12 +238,16 @@ public class GifImageWrapperIcon implements Icon {
             minDelayTime = Math.min(minDelayTime, delayTime);
         }
 
-        VolatileImage fastTargetImage = null;
+        // A VolatileImage here would take a BufferedImage's heap memory
+        // and take it off-heap.
+        // I guess it'd be faster,
+        // but the thread contention caused while drawing to a VolatileImage kills me.
+        BufferedImage fastTargetImage = null;
         if (fastTarget) {
             fastTargetImage = GraphicsEnvironment.getLocalGraphicsEnvironment()
                     .getDefaultScreenDevice()
                     .getDefaultConfiguration()
-                    .createCompatibleVolatileImage(
+                    .createCompatibleImage(
                             scaledFrameWidth,
                             scaledFrameHeight,
                             Transparency.BITMASK
@@ -438,8 +459,8 @@ public class GifImageWrapperIcon implements Icon {
             g2d.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_SPEED);
             g2d.setRenderingHint(RenderingHints.KEY_COLOR_RENDERING, RenderingHints.VALUE_COLOR_RENDER_SPEED);
 
-            double scaleX = (double) scaledWidth / canvasWidth;
-            double scaleY = (double) scaledHeight / canvasHeight;
+            double scaleX = (double) postScaleWidth / canvasWidth;
+            double scaleY = (double) postScaleHeight / canvasHeight;
 
             g2d.translate(x, y);
             g2d.scale(scaleX, scaleY);
@@ -460,12 +481,12 @@ public class GifImageWrapperIcon implements Icon {
 
     @Override
     public int getIconWidth() {
-        return scaledWidth;
+        return postScaleWidth;
     }
 
     @Override
     public int getIconHeight() {
-        return scaledHeight;
+        return postScaleHeight;
     }
 
     public ImageObserver getImageObserver() {
