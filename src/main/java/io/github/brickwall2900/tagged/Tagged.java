@@ -462,6 +462,7 @@ public class Tagged extends JFrame {
                                     repaintTimer.getDelay(),
                                     repaintTimer.getDelay() / 1000.0,
                                     1 / (repaintTimer.getDelay() / 1000.0),
+                                    iconManager.getShownThumbnailSize(),
                                     iconManager.getMaxEntries()));
                 } catch (Exception x) {
                     x.printStackTrace();

@@ -61,7 +61,9 @@ public class TaggedFileListCellRenderer extends JLabel implements ListCellRender
         int height = list.getFixedCellWidth();
         int listWidth = list.getVisibleRect().width;
         int listHeight = list.getVisibleRect().height;
-        iconManager.setThumbnailSize(Math.max(Math.max(width, height) - cellPadding, cellPadding));
+        //iconManager.setThumbnailSize(Math.max(Math.max(width, height) - cellPadding, cellPadding));
+        iconManager.setThumbnailSize(Math.max(width, height));
+        iconManager.setThumbnailPadding(cellPadding);
         int entries = (int) (Math.ceil((double) listWidth / width) * Math.ceil((double) listHeight / height));
         entries += iconLoadedBuffer;
         iconManager.setMaxEntries(entries);

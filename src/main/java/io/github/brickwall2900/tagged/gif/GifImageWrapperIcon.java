@@ -459,13 +459,14 @@ public class GifImageWrapperIcon implements Icon {
             g2d.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_SPEED);
             g2d.setRenderingHint(RenderingHints.KEY_COLOR_RENDERING, RenderingHints.VALUE_COLOR_RENDER_SPEED);
 
-            double scaleX = (double) postScaleWidth / canvasWidth;
-            double scaleY = (double) postScaleHeight / canvasHeight;
+//            double scaleX = (double) postScaleWidth / canvasWidth;
+//            double scaleY = (double) postScaleHeight / canvasHeight;
+//
+//            g2d.translate(x, y);
+//            g2d.scale(scaleX, scaleY);
 
-            g2d.translate(x, y);
-            g2d.scale(scaleX, scaleY);
-
-            g2d.drawImage(canvas, 0, 0, observer);
+            //g2d.drawImage(canvas, 0, 0, observer);
+            g2d.drawImage(canvas, x, y, postScaleWidth, postScaleHeight, null);
 
             g2d.dispose();
         }

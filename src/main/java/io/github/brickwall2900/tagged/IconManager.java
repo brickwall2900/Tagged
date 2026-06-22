@@ -36,6 +36,7 @@ public class IconManager {
 
     public final Icon defaultPlaceholderIcon;
     public final FlatSVGIcon.ColorFilter colorFilter;
+    private int thumbnailPadding = 4;
     private int thumbnailSize = 32;
     private boolean fastTarget = true;
 
@@ -88,15 +89,16 @@ public class IconManager {
     }
 
     private void rescale(int[] widthHeight) {
+        final int shownThumbnailSize = getShownThumbnailSize();
         int width = widthHeight[0];
         int height = widthHeight[1];
         //if (width > thumbnailSize || height > thumbnailSize) {
             if (width > height) {
-                height = (height * thumbnailSize) / width;
-                width = thumbnailSize;
+                height = (height * shownThumbnailSize) / width;
+                width = shownThumbnailSize;
             } else {
-                width = (width * thumbnailSize) / height;
-                height = thumbnailSize;
+                width = (width * shownThumbnailSize) / height;
+                height = shownThumbnailSize;
             }
         //}
         widthHeight[0] = width;
@@ -136,6 +138,18 @@ public class IconManager {
 
     public void setThumbnailSize(int thumbnailSize) {
         this.thumbnailSize = thumbnailSize;
+    }
+
+    public int getShownThumbnailSize() {
+        return Math.max((Math.ceilDiv(thumbnailSize, 64) * 64) - thumbnailPadding, thumbnailPadding);
+    }
+
+    public int getThumbnailPadding() {
+        return thumbnailPadding;
+    }
+
+    public void setThumbnailPadding(int thumbnailPadding) {
+        this.thumbnailPadding = thumbnailPadding;
     }
 
     public int getMaxEntries() {
@@ -199,7 +213,7 @@ public class IconManager {
 
     private Icon loadGif(Path path, String id) throws IOException {
         try (GifImageWrapperIconIndexedParser parser =
-                     new GifImageWrapperFastIconIndexedAutoDownsamplerParser(Math.min(thumbnailSize, 32), fastTarget)) {
+                     new GifImageWrapperFastIconIndexedAutoDownsamplerParser(Math.min(getShownThumbnailSize(), 64), fastTarget)) {
             GifImageWrapperIcon icon = GifImageReader.readImage(path, parser);
             //executor.submit(() -> icon.saveToCache(CACHE_DIR, id));
             return icon;
@@ -220,13 +234,22 @@ public class IconManager {
             public void run() {
                 Icon icon = iconRef.get();
                 if (icon != null) {
-                    if (icon instanceof ImageIcon imageIcon) {
-                        Image image = imageIcon.getImage();
-                        if (image != null) {
-                            image.flush();
+                    switch (icon) {
+                        case ImageIcon imageIcon -> {
+                            Image image = imageIcon.getImage();
+                            if (image != null) {
+                                image.flush();
+                            }
                         }
-                    } else if (icon instanceof GifImageWrapperIcon gifIcon) {
-                        gifIcon.flush();
+                        case GifImageWrapperIcon gifIcon -> gifIcon.flush();
+                        case ScaledImageIcon scaledImageIcon -> {
+                            Image image = scaledImageIcon.getImage();
+                            if (image != null) {
+                                image.flush();
+                            }
+                        }
+                        default -> {
+                        }
                     }
                 }
             }
@@ -254,7 +277,9 @@ public class IconManager {
                 return null;
             }
 
-            String id = filenameToHash(path.toString() + thumbnailSize);
+            final int shownThumbnailSize = getShownThumbnailSize();
+
+            String id = filenameToHash(path.toString() + shownThumbnailSize);
 
             Path cachePath = CACHE_DIR.resolve(id);
             if (path.getFileName().toString().toLowerCase().endsWith(".gif")) {
@@ -281,16 +306,15 @@ public class IconManager {
                 return null;
             }
 
-            int width = original.getWidth() / 2;
-            int height = original.getHeight() / 2;
-            int thumbnailSizeDiv2 = thumbnailSize;
-            if (width > thumbnailSizeDiv2 || height > thumbnailSizeDiv2) {
+            int width = original.getWidth();
+            int height = original.getHeight();
+            if (width > shownThumbnailSize || height > shownThumbnailSize) {
                 if (width > height) {
-                    height = (height * thumbnailSizeDiv2) / width;
-                    width = thumbnailSizeDiv2;
+                    height = (height * shownThumbnailSize) / width;
+                    width = shownThumbnailSize;
                 } else {
-                    width = (width * thumbnailSizeDiv2) / height;
-                    height = thumbnailSizeDiv2;
+                    width = (width * shownThumbnailSize) / height;
+                    height = shownThumbnailSize;
                 }
             }
 
