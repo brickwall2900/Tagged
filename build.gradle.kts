@@ -18,6 +18,9 @@ dependencies {
     implementation(libs.flatlaf.extras)
     implementation(libs.sierra)
     implementation(libs.arcana)
+    implementation(libs.hashing)
+    implementation(libs.fastutil)
+    implementation(libs.gson)
 }
 
 tasks.test {

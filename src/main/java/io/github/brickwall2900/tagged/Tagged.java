@@ -6,6 +6,7 @@ import com.formdev.flatlaf.extras.FlatAnimatedLafChange;
 import io.github.brickwall2900.swing.core.DialogBuilder;
 import io.github.brickwall2900.swing.core.TargetLocator;
 import io.github.brickwall2900.tagged.gif.GifImageWrapperIcon;
+import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
 
 import javax.swing.*;
 import javax.swing.Timer;
@@ -49,10 +50,15 @@ public class Tagged extends JFrame {
     }
 
     private static void swingMain() {
+        // next time
+        // we are NOT using swing gng </3
+        // it's kinda too painful to use for me
+        // too much legacy code
         FlatLightLaf.setup();
 
         Tagged frame = new Tagged();
         frame.setVisible(true);
+        frame.loadStuff();
     }
 
     public Tagged() {
@@ -138,6 +144,7 @@ public class Tagged extends JFrame {
         JMenuItem fileAddLocation = new JMenuItem(BUNDLE.getString("menu.file.add"), KeyEvent.VK_A);
         fileAddLocation.addActionListener(this::onAddLocationMenuItemPressed);
         fileAddLocation.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_A, KeyEvent.CTRL_DOWN_MASK));
+        fileAddLocation.setName("MenuAddLocation");
 
         JMenuItem options = new JMenuItem(BUNDLE.getString("menu.file.options"), KeyEvent.VK_O);
         options.addActionListener(this::onOptionsMenuItemPressed);
@@ -221,24 +228,64 @@ public class Tagged extends JFrame {
         Path newLocation = openFileChooserDirectory(false);
         if (newLocation != null) {
             locations.add(newLocation);
-            SwingWorkerWithDone<TaggedHelper.FileTag[], Void> worker = helper.startIndexingAsync(newLocation);
-            worker.addPropertyChangeListener(evt -> {
-                if (Objects.equals("path", evt.getPropertyName())) {
-                    updateStatusBar(BUNDLE.getString("status.finding").formatted(evt.getNewValue()));
-                }
-            });
-            worker.onDone((files, exception) -> {
-                if (exception != null) {
-                    exception.printStackTrace();
-                } else {
-                    TaggedFileListModel model = ((TaggedFileListModel)
-                            $("FileTagList", JList.class).getModel());
-                    model.addAll(files);
-                    updateStatusBarImmediate(BUNDLE.getString("status.finding.done").formatted(files.length));
-                }
-            });
-            worker.execute();
+            startWritingLocation(locations);
+            startIndexing(newLocation);
         }
+    }
+
+    private void startIndexing(Path newLocation) {
+        SwingWorkerWithDone<TaggedHelper.FileTag[], Void> worker = helper.newIndexWorkerAsync(newLocation);
+        worker.addPropertyChangeListener(evt -> {
+            if (Objects.equals("path", evt.getPropertyName())) {
+                updateStatusBar(BUNDLE.getString("status.finding").formatted(evt.getNewValue()));
+            }
+        });
+        worker.onDone((files, exception) -> {
+            if (exception != null) {
+                exception.printStackTrace();
+            } else {
+                TaggedFileListModel model = ((TaggedFileListModel)
+                        $("FileTagList", JList.class).getModel());
+                model.addAll(files);
+                updateStatusBarImmediate(BUNDLE.getString("status.finding.done").formatted(files.length));
+                startIndexHashing(files);
+            }
+        });
+        worker.execute();
+    }
+
+    private void startWritingLocation(List<Path> locations) {
+        SwingWorkerWithDone<Void, Void> worker = helper.newLocationWriterAsync(locations);
+        worker.onDone((_, exception) -> {
+            if (exception != null) {
+                exception.printStackTrace();
+            }
+        });
+        worker.execute();
+    }
+
+    private void startIndexHashing(TaggedHelper.FileTag[] files) {
+        SwingWorkerWithDone<Long2ObjectMap<TaggedHelper.FileTag>, Void> worker = helper.newIndexHashWorkerAsync(files);
+        worker.onDone((list, exception) -> {
+            if (exception != null) {
+                exception.printStackTrace();
+            } else {
+                System.out.printf("%d items hashed%n", list.size());
+                helper.getHashToFileTagMap().putAll(list);
+                startIndexWriting(list);
+            }
+        });
+        worker.execute();
+    }
+
+    private void startIndexWriting(Long2ObjectMap<TaggedHelper.FileTag> list) {
+        SwingWorkerWithDone<Void, Void> worker = helper.newIndexWriterAsync(list);
+        worker.onDone((_, exception) -> {
+            if (exception != null) {
+                exception.printStackTrace();
+            }
+        });
+        worker.execute();
     }
 
     private void setDarkMode(boolean darkMode, Component... needToBeUpdated) {
@@ -262,11 +309,57 @@ public class Tagged extends JFrame {
         });
     }
 
+    private void loadStuff() {
+        if (helper.doesLocationExist()) {
+            loadLocations();
+        }
+
+        if (helper.doesIndexExist()) {
+            loadIndices();
+        }
+    }
+
+    private void loadLocations() {
+        // SON what am i doing???
+        // I AM A BOUT TO GET SLIMED OMY
+        $(getJMenuBar(), "MenuAddLocation", JMenuItem.class).setEnabled(false);
+        SwingWorkerWithDone<List<Path>, Void> worker = helper.newLocationReaderAsync();
+        worker.onDone((result, exception) -> {
+            if (exception != null) {
+                exception.printStackTrace();
+            } else {
+                locations.addAll(result);
+                $(getJMenuBar(), "MenuAddLocation", JMenuItem.class).setEnabled(true);
+
+                for (Path location : result) {
+                    startIndexing(location);
+                }
+            }
+        });
+        worker.execute();
+    }
+
+    private void loadIndices() {
+        SwingWorkerWithDone<Long2ObjectMap<TaggedHelper.FileTag>, Void> worker = helper.newIndexReaderAsync();
+        worker.onDone((result, exception) -> {
+            if (exception != null) {
+                exception.printStackTrace();
+            } else {
+                helper.setHashToFileTagMap(result);
+                updateStatusBarImmediate("Indices loaded");
+            }
+        });
+        worker.execute();
+    }
 
     // utility //
     /// okay shut up i'm trying something new
     private <T extends Component> T $(String selector, Class<T> as) {
-        return as.cast(TargetLocator.getTarget(selector, getContentPane(), this));
+        return $(getContentPane(), selector, as);
+    }
+
+    private <T extends Component> T $(Component src, String selector, Class<T> as) {
+        return as.cast(TargetLocator.getTarget(selector, src, this));
     }
 
     /// returns a Path if user says yes, null otherwise
@@ -288,7 +381,7 @@ public class Tagged extends JFrame {
     private long lastUpdateMillis = System.currentTimeMillis();
 
     private void updateStatusBar(String text) {
-        if ((System.currentTimeMillis() - lastUpdateMillis) >= 100) {
+        if ((System.currentTimeMillis() - lastUpdateMillis) >= 33) {
             $("StatusLabel", JLabel.class).setText(text);
             lastUpdateMillis = System.currentTimeMillis();
         }

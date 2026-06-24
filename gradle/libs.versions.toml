@@ -1,10 +1,16 @@
 [versions]
 flatlaf = "3.7.1"
 sierra = "4.6.1"
-arcana = "0.2"
+arcana = "0.2.1"
+hashing = "0.27ea1"
+fastutil = "8.5.18"
+gson = "2.14.0"
 
 [libraries]
 flatlaf = { module = "com.formdev:flatlaf", version.ref = "flatlaf" }
 flatlaf-extras = { module = "com.formdev:flatlaf-extras", version.ref = "flatlaf" }
 sierra = { module = "org.httprpc:sierra", version.ref = "sierra" }
 arcana = { module = "io.github.brickwall2900:arcana", version.ref = "arcana" }
+hashing = { module = "net.openhft:zero-allocation-hashing", version.ref = "hashing" }
+fastutil = { module = "it.unimi.dsi:fastutil", version.ref = "fastutil" }
+gson = { module = "com.google.code.gson:gson", version.ref = "gson" }
