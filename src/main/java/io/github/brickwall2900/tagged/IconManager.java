@@ -213,7 +213,7 @@ public class IconManager {
 
     private Icon loadGif(Path path, String id) throws IOException {
         try (GifImageWrapperIconIndexedParser parser =
-                     new GifImageWrapperFastIconIndexedAutoDownsamplerParser(Math.min(getShownThumbnailSize(), 64), fastTarget)) {
+                     new GifImageWrapperFastIconIndexedAutoDownsamplerParser(getShownThumbnailSize(), fastTarget)) {
             GifImageWrapperIcon icon = GifImageReader.readImage(path, parser);
             //executor.submit(() -> icon.saveToCache(CACHE_DIR, id));
             return icon;

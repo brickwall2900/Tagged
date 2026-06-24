@@ -3,6 +3,7 @@ package io.github.brickwall2900.tagged;
 import com.formdev.flatlaf.FlatDarkLaf;
 import com.formdev.flatlaf.FlatLightLaf;
 import com.formdev.flatlaf.extras.FlatAnimatedLafChange;
+import io.github.brickwall2900.swing.adapters.DocumentAdapter;
 import io.github.brickwall2900.swing.core.DialogBuilder;
 import io.github.brickwall2900.swing.core.TargetLocator;
 import io.github.brickwall2900.tagged.gif.GifImageWrapperIcon;
@@ -10,6 +11,7 @@ import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
 
 import javax.swing.*;
 import javax.swing.Timer;
+import javax.swing.event.DocumentEvent;
 import java.awt.*;
 import java.awt.event.*;
 import java.io.IOException;
@@ -17,8 +19,11 @@ import java.lang.ref.Reference;
 import java.nio.file.Path;
 import java.util.*;
 import java.util.List;
+import java.util.concurrent.ExecutionException;
+import java.util.function.Consumer;
 import java.util.prefs.BackingStoreException;
 import java.util.prefs.Preferences;
+import java.util.stream.Collectors;
 
 public class Tagged extends JFrame {
     private static final int PADDING = 4;
@@ -96,6 +101,22 @@ public class Tagged extends JFrame {
 
         JTextField searchField = new JTextField();
         searchField.setName("SearchField");
+        searchField.getDocument().addDocumentListener(new DocumentAdapter() {
+            @Override
+            public void changedUpdate(DocumentEvent e) {
+                onSearchFieldSearched(e);
+            }
+
+            @Override
+            public void insertUpdate(DocumentEvent e) {
+                onSearchFieldSearched(e);
+            }
+
+            @Override
+            public void removeUpdate(DocumentEvent e) {
+                onSearchFieldSearched(e);
+            }
+        });
         searchPanel.setBorder(BorderFactory.createEmptyBorder(PADDING, PADDING, PADDING, PADDING));
         searchPanel.add(searchField, BorderLayout.CENTER);
 
@@ -117,13 +138,24 @@ public class Tagged extends JFrame {
         int cellSize = preferences.getInt(PREF_KEY_CELL_SIZE, 96);
         list.setFixedCellWidth(cellSize);
         list.setFixedCellHeight(cellSize);
-        list.setComponentPopupMenu(initContextMenu());
+
+        JPopupMenu popupMenu = new JPopupMenu();
+        initContextMenu(popupMenu::add, popupMenu::addSeparator);
+
+        list.setComponentPopupMenu(popupMenu);
         list.addMouseListener(new MouseAdapter() {
             @Override
             public void mouseClicked(MouseEvent e) {
                 onListClicked(e);
             }
         });
+        list.addKeyListener(new KeyAdapter() {
+            @Override
+            public void keyTyped(KeyEvent e) {
+                onListKeyTyped(e);
+            }
+        });
+
         scrollPanel.setViewportView(list);
         scrollPanel.setPreferredSize(new Dimension(800, 600));
 
@@ -140,32 +172,36 @@ public class Tagged extends JFrame {
     private void initMenu() {
         JMenuBar menuBar = new JMenuBar();
         JMenu fileMenu = new JMenu(BUNDLE.getString("menu.file"));
+        JMenu appMenu = new JMenu(BUNDLE.getString("menu.app"));
 
-        JMenuItem fileAddLocation = new JMenuItem(BUNDLE.getString("menu.file.add"), KeyEvent.VK_A);
-        fileAddLocation.addActionListener(this::onAddLocationMenuItemPressed);
-        fileAddLocation.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_A, KeyEvent.CTRL_DOWN_MASK));
-        fileAddLocation.setName("MenuAddLocation");
+        JMenuItem addLocation = new JMenuItem(BUNDLE.getString("menu.app.add"), KeyEvent.VK_A);
+        addLocation.addActionListener(this::onAddLocationMenuItemPressed);
+        addLocation.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_A, KeyEvent.CTRL_DOWN_MASK));
+        addLocation.setName("MenuAddLocation");
 
-        JMenuItem options = new JMenuItem(BUNDLE.getString("menu.file.options"), KeyEvent.VK_O);
+        JMenuItem options = new JMenuItem(BUNDLE.getString("menu.app.options"), KeyEvent.VK_O);
         options.addActionListener(this::onOptionsMenuItemPressed);
         options.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_P, KeyEvent.CTRL_DOWN_MASK));
 
-        JCheckBoxMenuItem debug = new JCheckBoxMenuItem(BUNDLE.getString("menu.file.debug"));
+        JCheckBoxMenuItem debug = new JCheckBoxMenuItem(BUNDLE.getString("menu.app.debug"));
         debug.addActionListener(this::onDebugMenuItemPressed);
 
-        fileMenu.add(fileAddLocation);
-        fileMenu.add(options);
-        fileMenu.addSeparator();
-        fileMenu.add(debug);
+        appMenu.add(addLocation);
+        appMenu.add(options);
+        appMenu.addSeparator();
+        appMenu.add(debug);
+
+        initContextMenu(fileMenu::add, fileMenu::addSeparator);
 
         menuBar.add(fileMenu);
+        menuBar.add(appMenu);
 
         setJMenuBar(menuBar);
     }
 
-    private JPopupMenu initContextMenu() {
-        JPopupMenu popupMenu = new JPopupMenu();
-
+    private void initContextMenu(
+            Consumer<JMenuItem> addItem,
+            Runnable addSeparator) {
         JMenuItem open = new JMenuItem(BUNDLE.getString("menu.context.open"), KeyEvent.VK_O);
         open.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_O, KeyEvent.CTRL_DOWN_MASK));
         open.addActionListener(this::onContextOpenFileMenuItemPressed);
@@ -176,13 +212,17 @@ public class Tagged extends JFrame {
 
         JMenuItem tags = new JMenuItem(BUNDLE.getString("menu.context.tags"), KeyEvent.VK_T);
         tags.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_T, KeyEvent.CTRL_DOWN_MASK));
+        tags.addActionListener(this::onContextTagMenuItemPressed);
 
-        popupMenu.add(open);
-        popupMenu.add(showFileLocation);
-        popupMenu.addSeparator();
-        popupMenu.add(tags);
+        JMenuItem removeTags = new JMenuItem(BUNDLE.getString("menu.context.removeTags"), KeyEvent.VK_R);
+        removeTags.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_R, KeyEvent.CTRL_DOWN_MASK));
+        removeTags.addActionListener(this::onContextRemoveTagMenuItemPressed);
 
-        return popupMenu;
+        addItem.accept(open);
+        addItem.accept(showFileLocation);
+        addSeparator.run();
+        addItem.accept(tags);
+        addItem.accept(removeTags);
     }
 
     private void initRepaintTimer() {
@@ -248,6 +288,7 @@ public class Tagged extends JFrame {
             } else {
                 TaggedFileListModel model = ((TaggedFileListModel)
                         $("FileTagList", JList.class).getModel());
+
                 model.addAll(files);
                 updateStatusBarImmediate(BUNDLE.getString("status.finding.done").formatted(files.length));
                 startIndexHashing(files);
@@ -290,6 +331,20 @@ public class Tagged extends JFrame {
         worker.execute();
     }
 
+    private void startIndexWritingAndWait(Long2ObjectMap<TaggedHelper.FileTag> list) {
+        SwingWorkerWithDone<Void, Void> worker = helper.newIndexWriterAsync(list);
+        worker.onDone((_, exception) -> {
+            if (exception != null) {
+                exception.printStackTrace();
+            }
+        });
+        worker.execute();
+        try {
+            worker.get();
+        } catch (InterruptedException | ExecutionException _) {
+        }
+    }
+
     private void setDarkMode(boolean darkMode, Component... needToBeUpdated) {
         SwingUtilities.invokeLater(() -> {
             FlatAnimatedLafChange.showSnapshot();
@@ -312,10 +367,6 @@ public class Tagged extends JFrame {
     }
 
     private void loadStuff() {
-        if (helper.doesLocationExist()) {
-            loadLocations();
-        }
-
         if (helper.doesIndexExist()) {
             loadIndices();
         }
@@ -349,6 +400,10 @@ public class Tagged extends JFrame {
             } else {
                 helper.setHashToFileTagMap(result);
                 updateStatusBarImmediate("Indices loaded");
+
+                if (helper.doesLocationExist()) {
+                    loadLocations();
+                }
             }
         });
         worker.execute();
@@ -425,6 +480,37 @@ public class Tagged extends JFrame {
         }
     }
 
+    private void tryBrowsingFile(Path path) {
+        boolean desktopSupported = Desktop.isDesktopSupported();
+
+        if (path != null && desktopSupported) {
+            Desktop desktop = Desktop.getDesktop();
+            desktop.browseFileDirectory(path.toFile());
+        }
+
+        if (!desktopSupported) {
+            DialogBuilder.builder()
+                    .title(getTitle())
+                    .content(BUNDLE.getString("error.desktop.notSupported"))
+                    .messageType(JOptionPane.ERROR_MESSAGE)
+                    .build(this)
+                    .setVisible(true);
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private void performSearch(String filter) {
+        JList<TaggedHelper.FileTag> list = $("FileTagList", JList.class);
+        TaggedFileListModel model = ((TaggedFileListModel) list.getModel());
+
+        list.setCursor(Cursor.getPredefinedCursor(Cursor.WAIT_CURSOR));
+
+        String finalFilter = filter == null || filter.isBlank() ? null : filter;
+        SwingUtilities.invokeLater(() -> model.setFilter(finalFilter));
+
+        list.setCursor(null);
+    }
+
     // events //
 
     private void onAddLocationMenuItemPressed(ActionEvent e) {
@@ -491,7 +577,7 @@ public class Tagged extends JFrame {
                 preferences.getBoolean(PREF_KEY_DARK_MODE, false),
                 preferences.getBoolean(PREF_KEY_FAST_TARGET, true),
                 preferences.getInt(PREF_KEY_CELL_SIZE, 96),
-                preferences.getInt(PREF_KEY_CELL_PADDING, 32),
+                preferences.getInt(PREF_KEY_CELL_PADDING, 64),
                 preferences.getInt(PREF_KEY_THREAD_COUNT,
                         (int) (Runtime.getRuntime().availableProcessors() / 1.25)),
                 preferences.getInt(PREF_KEY_CACHE_BUFFER, 50),
@@ -499,7 +585,7 @@ public class Tagged extends JFrame {
         ));
         optionDialog.setOnOptionsApplied((options) -> {
             preferences.putInt(PREF_KEY_CELL_SIZE, Math.clamp(options.cellSize(), 32, Short.MAX_VALUE));
-            preferences.putInt(PREF_KEY_CELL_PADDING, Math.clamp(options.cellPadding(), 32, Short.MAX_VALUE));
+            preferences.putInt(PREF_KEY_CELL_PADDING, Math.clamp(options.cellPadding(), 0, Short.MAX_VALUE));
             preferences.putInt(PREF_KEY_CACHE_BUFFER, Math.clamp(options.cacheBuffer(), 0, Integer.MAX_VALUE));
             preferences.putInt(PREF_KEY_CACHE_SIZE_LIMIT, Math.clamp(options.cacheSizeLimit(), 0, Integer.MAX_VALUE / 1024 / 1024));
             preferences.putInt(PREF_KEY_THREAD_COUNT, options.threads());
@@ -605,7 +691,92 @@ public class Tagged extends JFrame {
         JList<TaggedHelper.FileTag> list = $("FileTagList", JList.class);
         TaggedHelper.FileTag selected = list.getSelectedValue();
         if (selected != null) {
-            tryOpeningFile(selected.filePath().getParent());
+            tryBrowsingFile(selected.filePath());
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private void onContextTagMenuItemPressed(ActionEvent e) {
+        JList<TaggedHelper.FileTag> list = $("FileTagList", JList.class);
+        TaggedFileListModel model = (TaggedFileListModel) list.getModel();
+        List<TaggedHelper.FileTag> selectedTags = list.getSelectedValuesList();
+
+        if (selectedTags == null || selectedTags.isEmpty()) {
+            return;
+        }
+
+        for (TaggedHelper.FileTag selected : selectedTags) {
+            /*JTextField tagField = new JTextField();
+
+            JPanel panel = new JPanel(new BorderLayout(4, 4));
+            panel.add(new JLabel(BUNDLE.getString("dialog.tagEditor")), BorderLayout.NORTH);
+            panel.add(tagField, BorderLayout.CENTER);
+            panel.setBorder(BorderFactory.createEmptyBorder(4, 4, 4, 4));*/
+
+            DialogBuilder builder = DialogBuilder.builder()
+                    //.content(panel)
+                    .content(BUNDLE.getString("dialog.tagEditor").formatted(selected.filePath()))
+                    .messageType(JOptionPane.QUESTION_MESSAGE)
+                    .optionType(JOptionPane.OK_CANCEL_OPTION)
+                    .setModalityType(Dialog.ModalityType.APPLICATION_MODAL)
+                    .title(getTitle())
+                    .wantsInput(true);
+
+            JOptionPane optionPane = builder.getOptionPane();
+            optionPane.setInitialSelectionValue(String.join(" ", selected.tags()));
+
+            builder.build(this).setVisible(true);
+
+            Object result = optionPane.getValue();
+            String inputValue = Objects.toString(optionPane.getInputValue());
+            if (result == null) {
+                continue;
+            }
+            if (Objects.equals(result, JOptionPane.OK_OPTION)) {
+                String[] tags = inputValue.split("\\s+");
+
+                if (tags.length == 1 && tags[0].isBlank()) {
+                    tags = new String[0];
+                }
+
+                TaggedHelper.FileTag newTag = new TaggedHelper.FileTag(selected.filePath(), tags);
+                model.modify(selected, newTag);
+                helper.storeTag(newTag);
+            } else if (Objects.equals(result, JOptionPane.CANCEL_OPTION)) {
+                break;
+            }
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private void onContextRemoveTagMenuItemPressed(ActionEvent e) {
+        JList<TaggedHelper.FileTag> list = $("FileTagList", JList.class);
+        TaggedFileListModel model = (TaggedFileListModel) list.getModel();
+        List<TaggedHelper.FileTag> selected = list.getSelectedValuesList();
+        if (selected != null && !selected.isEmpty()) {
+            DialogBuilder builder = DialogBuilder.builder()
+                    // is this mf obsessed with the stream API???
+                    .content(BUNDLE.getString("dialog.removeTag").formatted(selected.stream()
+                            .map(TaggedHelper.FileTag::filePath)
+                            .map(Path::toString)
+                            .collect(Collectors.joining(", "))))
+                    .messageType(JOptionPane.QUESTION_MESSAGE)
+                    .optionType(JOptionPane.YES_NO_OPTION)
+                    .setModalityType(Dialog.ModalityType.APPLICATION_MODAL)
+                    .title(getTitle());
+
+            JOptionPane optionPane = builder.getOptionPane();
+
+            builder.build(this).setVisible(true);
+
+            Object result = optionPane.getValue();
+            if (result != null && Objects.equals(result, JOptionPane.OK_OPTION)) {
+                for (TaggedHelper.FileTag fileTag : selected) {
+                    TaggedHelper.FileTag newTag = new TaggedHelper.FileTag(fileTag.filePath(), new String[0]);
+                    model.modify(fileTag, newTag);
+                    helper.storeTag(newTag);
+                }
+            }
         }
     }
 
@@ -615,12 +786,27 @@ public class Tagged extends JFrame {
         }
     }
 
+    private void onListKeyTyped(KeyEvent e) {
+        if (!e.isControlDown()) {
+            JTextField searchField = $("SearchField", JTextField.class);
+            searchField.dispatchEvent(e);
+            searchField.requestFocus(FocusEvent.Cause.ACTIVATION);
+        }
+    }
+
+    private void onSearchFieldSearched(DocumentEvent e) {
+        JTextField field = $("SearchField", JTextField.class);
+        String text = field.getText();
+        performSearch(text);
+    }
+
     private void onWindowClose() {
         try {
             preferences.flush();
         } catch (BackingStoreException e) {
             e.printStackTrace();
         }
+        startIndexWritingAndWait(helper.getHashToFileTagMap());
         repaintTimer.stop();
         iconManager.shutdown();
         helper.shutdown();

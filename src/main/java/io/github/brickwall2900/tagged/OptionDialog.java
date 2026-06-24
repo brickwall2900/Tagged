@@ -57,7 +57,7 @@ public class OptionDialog extends JDialog {
         JLabel cacheSizeLimitLabel = new JLabel(BUNDLE.getString("label.cacheSizeLimit"));
 
         JSpinner cellSizeField = new JSpinner(new SpinnerNumberModel(32, 32, Short.MAX_VALUE, 1));
-        JSpinner cellPaddingField = new JSpinner(new SpinnerNumberModel(0, 0, 32, 1));
+        JSpinner cellPaddingField = new JSpinner(new SpinnerNumberModel(0, 0, Short.MAX_VALUE, 1));
         JSpinner threadsField = new JSpinner(new SpinnerNumberModel(1, 1, Runtime.getRuntime().availableProcessors(), 1));
         JSpinner cacheBufferField = new JSpinner(new SpinnerNumberModel(0, 0, Integer.MAX_VALUE, 1));
         JSpinner cacheSizeLimitField = new JSpinner(new SpinnerNumberModel(0, 0, Integer.MAX_VALUE / 1024 / 1024, 1));
@@ -187,7 +187,7 @@ public class OptionDialog extends JDialog {
         boolean darkMode = $("DarkMode", JCheckBox.class).isSelected();
         boolean fastTarget = $("FastTarget", JCheckBox.class).isSelected();
         int cellSize = Math.clamp((int) $("CellSize", JSpinner.class).getValue(), 32, Short.MAX_VALUE);
-        int cellPadding = Math.clamp((int) $("CellPadding", JSpinner.class).getValue(), 0, 32);
+        int cellPadding = Math.clamp((int) $("CellPadding", JSpinner.class).getValue(), 0, Short.MAX_VALUE);
         int threads = Math.clamp((int) $("Threads", JSpinner.class).getValue(), 1, Runtime.getRuntime().availableProcessors());
         int cacheBuffer = Math.clamp((int) $("CacheBuffer", JSpinner.class).getValue(), 0, Integer.MAX_VALUE);
         int cacheSizeLimit = Math.clamp((int) $("CacheSizeLimit", JSpinner.class).getValue(), 0, Integer.MAX_VALUE / 1024 / 1024);

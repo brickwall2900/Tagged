@@ -45,7 +45,7 @@ public class TaggedHelper {
     }
 
     public SwingWorkerWithDone<FileTag[], Void> newIndexWorkerAsync(Path location) {
-        return new FileIndexWorker(location);
+        return new FileIndexWorker(hashToFileTagMap, location);
     }
 
     public SwingWorkerWithDone<Long2ObjectMap<FileTag>, Void> newIndexHashWorkerAsync(FileTag[] tags) {
@@ -88,6 +88,19 @@ public class TaggedHelper {
         this.hashToFileTagMap = hashToFileTagMap;
     }
 
+    private static long calculateHash(FileTag fileTag) {
+        return LongHashFunction.xx().hashChars(fileTag.filePath.toString());
+    }
+
+    public void storeTag(FileTag tag) {
+        long hash = calculateHash(tag);
+        if (tag.tags().length == 0 && hashToFileTagMap.containsKey(hash)) {
+            hashToFileTagMap.remove(hash);
+        } else {
+            hashToFileTagMap.put(hash, tag);
+        }
+    }
+
     public void changeThreadCount(int threadCount) {
         if (this.threadCount != threadCount) {
             if (executor != null) {
@@ -120,6 +133,13 @@ public class TaggedHelper {
         @Override
         public int hashCode() {
             return Objects.hashCode(filePath);
+        }
+
+        @Override
+        public String toString() {
+            return "FileTag[" +
+                    "filePath=" + filePath + ", " +
+                    "tags=" + Arrays.toString(tags) + ']';
         }
     }
 
@@ -372,15 +392,16 @@ public class TaggedHelper {
 
         // creating a fuck ton of objects here huhu
         private static FileTagHashMeta calculate(FileTag fileTag) {
-            String filepath = fileTag.filePath.toString();
-            return new FileTagHashMeta(LongHashFunction.xx().hashChars(filepath), fileTag);
+            return new FileTagHashMeta(calculateHash(fileTag), fileTag);
         }
     }
 
     private static final class FileIndexWorker extends SwingWorkerWithDone<FileTag[], Void> {
+        private final Long2ObjectMap<FileTag> fileTags;
         private final Path location;
 
-        public FileIndexWorker(Path location) {
+        public FileIndexWorker(Long2ObjectMap<FileTag> fileTags, Path location) {
+            this.fileTags = fileTags;
             this.location = location;
         }
 
@@ -400,6 +421,14 @@ public class TaggedHelper {
                                 null,
                                 p.filePath))
                         .sorted(Comparator.comparing(p -> p.filePath))
+                        .map(x -> {
+                            // BROOOOOO WHAT IN THE ACTUAL FUCKKK
+                            if (fileTags.containsValue(x)) {
+                                return fileTags.get(calculateHash(x));
+                            } else {
+                                return x;
+                            }
+                        })
                         .toArray(FileTag[]::new);
             } catch (IOException e) {
                 throw new UncheckedIOException(e);

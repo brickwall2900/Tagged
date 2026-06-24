@@ -87,7 +87,11 @@ public class TaggedFileListCellRenderer extends JLabel implements ListCellRender
                 border = UIManager.getBorder("List.focusCellHighlightBorder");
             }
         } else {
-            border = EMPTY_BORDER;
+            if (value.tags().length == 0) {
+                border = BorderFactory.createLineBorder(UIManager.getColor("Actions.Red"), 2);
+            } else {
+                border = EMPTY_BORDER;
+            }
         }
         setBorder(border);
 
