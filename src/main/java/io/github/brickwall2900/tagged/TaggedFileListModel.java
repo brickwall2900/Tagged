@@ -18,8 +18,10 @@ public class TaggedFileListModel extends AbstractListModel<TaggedHelper.FileTag>
         fireIntervalAdded(this, startIndex, endIndex);
     }
 
-    public List<TaggedHelper.FileTag> subList(int fromIndex, int toIndex) {
-        return files.subList(fromIndex, toIndex);
+    public void clear() {
+        int lastIndex = files.size() - 1;
+        files.clear();
+        fireIntervalRemoved(this, 0, lastIndex);
     }
 
     @Override

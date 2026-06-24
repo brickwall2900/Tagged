@@ -223,14 +223,16 @@ public class Tagged extends JFrame {
     }
 
     /// adds a location to the entry list
-    @SuppressWarnings("unchecked")
-    private void addLocation() {
-        Path newLocation = openFileChooserDirectory(false);
-        if (newLocation != null) {
-            locations.add(newLocation);
-            startWritingLocation(locations);
-            startIndexing(newLocation);
-        }
+    public void addLocation(Path newLocation) {
+        locations.add(newLocation);
+    }
+
+    public void removeLocation(Path location) {
+        locations.remove(location);
+    }
+
+    public List<Path> getLocations() {
+        return locationsUnmodifiable;
     }
 
     private void startIndexing(Path newLocation) {
@@ -363,7 +365,7 @@ public class Tagged extends JFrame {
     }
 
     /// returns a Path if user says yes, null otherwise
-    private Path openFileChooserDirectory(boolean save) {
+    public Path openFileChooserDirectory(boolean save) {
         initFileChooser();
         fileChooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
 
@@ -426,7 +428,18 @@ public class Tagged extends JFrame {
     // events //
 
     private void onAddLocationMenuItemPressed(ActionEvent e) {
-        addLocation();
+        LocationDialog dialog = new LocationDialog(this);
+        dialog.setVisible(true);
+
+        // re index all locations lol
+        TaggedFileListModel model = ((TaggedFileListModel)
+                $("FileTagList", JList.class).getModel());
+        model.clear();
+
+        startWritingLocation(locations);
+        for (Path location : locations) {
+            startIndexing(location);
+        }
     }
 
     @SuppressWarnings("unchecked")
@@ -616,6 +629,7 @@ public class Tagged extends JFrame {
     private final TaggedHelper helper;
     private final IconManager iconManager;
     private final List<Path> locations = new ArrayList<>();
+    private final List<Path> locationsUnmodifiable = Collections.unmodifiableList(locations);
     final Preferences preferences;
     private Timer repaintTimer;
     private JFileChooser fileChooser;
