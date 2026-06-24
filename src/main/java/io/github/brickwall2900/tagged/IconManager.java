@@ -344,7 +344,7 @@ public class IconManager {
                 ImageIO.write(thumbnail, "JPG", outputStream);
             }
 
-            return new ScaledImageIcon(new ImageIcon(original));
+            return new ScaledImageIcon(new ImageIcon(thumbnail));
 
         } catch (IOException e) {
             e.printStackTrace();
