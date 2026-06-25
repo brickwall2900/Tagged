@@ -818,11 +818,18 @@ public class Tagged extends JFrame {
     }
 
     private void onListKeyTyped(KeyEvent e) {
-        if (!e.isControlDown()) {
-            JTextField searchField = $("SearchField", JTextField.class);
-            searchField.dispatchEvent(e);
-            searchField.requestFocus(FocusEvent.Cause.ACTIVATION);
+        if (e.isControlDown()) {
+            return;
         }
+
+        if (e.getKeyChar() == '\n') {
+            onContextOpenFileMenuItemPressed(null);
+            return;
+        }
+
+        JTextField searchField = $("SearchField", JTextField.class);
+        searchField.dispatchEvent(e);
+        searchField.requestFocus(FocusEvent.Cause.ACTIVATION);
     }
 
     private void onSearchFieldSearched(DocumentEvent e) {
