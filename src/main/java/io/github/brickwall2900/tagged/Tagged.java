@@ -13,6 +13,7 @@ import javax.swing.*;
 import javax.swing.Timer;
 import javax.swing.event.DocumentEvent;
 import java.awt.*;
+import java.awt.desktop.QuitStrategy;
 import java.awt.event.*;
 import java.io.IOException;
 import java.lang.ref.Reference;
@@ -179,14 +180,19 @@ public class Tagged extends JFrame {
         addLocation.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_A, KeyEvent.CTRL_DOWN_MASK));
         addLocation.setName("MenuAddLocation");
 
+        JMenuItem saveIndex = new JMenuItem(BUNDLE.getString("menu.app.saveIndex"), KeyEvent.VK_S);
+        saveIndex.addActionListener(this::onSaveTagsMenuItemPressed);
+        saveIndex.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_S, KeyEvent.CTRL_DOWN_MASK));
+
         JMenuItem options = new JMenuItem(BUNDLE.getString("menu.app.options"), KeyEvent.VK_O);
         options.addActionListener(this::onOptionsMenuItemPressed);
         options.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_P, KeyEvent.CTRL_DOWN_MASK));
 
-        JCheckBoxMenuItem debug = new JCheckBoxMenuItem(BUNDLE.getString("menu.app.debug"));
+        JMenuItem debug = new JMenuItem(BUNDLE.getString("menu.app.debug"));
         debug.addActionListener(this::onDebugMenuItemPressed);
 
         appMenu.add(addLocation);
+        appMenu.add(saveIndex);
         appMenu.add(options);
         appMenu.addSeparator();
         appMenu.add(debug);
@@ -206,8 +212,8 @@ public class Tagged extends JFrame {
         open.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_O, KeyEvent.CTRL_DOWN_MASK));
         open.addActionListener(this::onContextOpenFileMenuItemPressed);
 
-        JMenuItem showFileLocation = new JMenuItem(BUNDLE.getString("menu.context.showLocation"), KeyEvent.VK_S);
-        showFileLocation.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_S, KeyEvent.CTRL_DOWN_MASK));
+        JMenuItem showFileLocation = new JMenuItem(BUNDLE.getString("menu.context.showLocation"), KeyEvent.VK_F);
+        showFileLocation.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_F, KeyEvent.CTRL_DOWN_MASK));
         showFileLocation.addActionListener(this::onContextShowLocationFileMenuItemPressed);
 
         JMenuItem tags = new JMenuItem(BUNDLE.getString("menu.context.tags"), KeyEvent.VK_T);
@@ -326,6 +332,8 @@ public class Tagged extends JFrame {
         worker.onDone((_, exception) -> {
             if (exception != null) {
                 exception.printStackTrace();
+            } else {
+                updateStatusBarImmediate("Tags wrote to disk");
             }
         });
         worker.execute();
@@ -483,9 +491,28 @@ public class Tagged extends JFrame {
     private void tryBrowsingFile(Path path) {
         boolean desktopSupported = Desktop.isDesktopSupported();
 
+        IOException error = null;
+
         if (path != null && desktopSupported) {
             Desktop desktop = Desktop.getDesktop();
-            desktop.browseFileDirectory(path.toFile());
+            if (desktop.isSupported(Desktop.Action.BROWSE_FILE_DIR)) {
+                desktop.browseFileDirectory(path.toFile());
+            } else {
+                try {
+                    desktop.open(path.getParent().toFile());
+                } catch (IOException e) {
+                    error = e;
+                }
+            }
+        }
+
+        if (error != null) {
+            DialogBuilder.builder()
+                    .title(getTitle())
+                    .content(BUNDLE.getString("error.desktop.exception").formatted(error))
+                    .messageType(JOptionPane.ERROR_MESSAGE)
+                    .build(this)
+                    .setVisible(true);
         }
 
         if (!desktopSupported) {
@@ -526,6 +553,10 @@ public class Tagged extends JFrame {
         for (Path location : locations) {
             startIndexing(location);
         }
+    }
+
+    private void onSaveTagsMenuItemPressed(ActionEvent e) {
+        startIndexWriting(helper.getHashToFileTagMap());
     }
 
     @SuppressWarnings("unchecked")
