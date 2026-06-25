@@ -55,36 +55,42 @@ public class OptionDialog extends JDialog {
         JLabel threadsLabel = new JLabel(BUNDLE.getString("label.threads"));
         JLabel cacheBufferLabel = new JLabel(BUNDLE.getString("label.cacheBuffer"));
         JLabel cacheSizeLimitLabel = new JLabel(BUNDLE.getString("label.cacheSizeLimit"));
+        JLabel searchOptionLabel = new JLabel(BUNDLE.getString("label.searchOption"));
 
         JSpinner cellSizeField = new JSpinner(new SpinnerNumberModel(32, 32, Short.MAX_VALUE, 1));
         JSpinner cellPaddingField = new JSpinner(new SpinnerNumberModel(0, 0, Short.MAX_VALUE, 1));
         JSpinner threadsField = new JSpinner(new SpinnerNumberModel(1, 1, Runtime.getRuntime().availableProcessors(), 1));
         JSpinner cacheBufferField = new JSpinner(new SpinnerNumberModel(0, 0, Integer.MAX_VALUE, 1));
         JSpinner cacheSizeLimitField = new JSpinner(new SpinnerNumberModel(0, 0, Integer.MAX_VALUE / 1024 / 1024, 1));
+        JComboBox<TaggedFileListModel.SearchOption> searchOptionField = new JComboBox<>(TaggedFileListModel.SearchOption.values());
 
         cellSizeField.setName("CellSize");
         cellPaddingField.setName("CellPadding");
         threadsField.setName("Threads");
         cacheBufferField.setName("CacheBuffer");
         cacheSizeLimitField.setName("CacheSizeLimit");
+        searchOptionField.setName("SearchOption");
 
         cellSizeField.setToolTipText(BUNDLE.getString("label.cellSize.tooltip"));
         cellPaddingField.setToolTipText(BUNDLE.getString("label.cellPadding.tooltip"));
         threadsField.setToolTipText(BUNDLE.getString("label.threads.tooltip"));
         cacheBufferField.setToolTipText(BUNDLE.getString("label.cacheBuffer.tooltip"));
         cacheSizeLimitField.setToolTipText(BUNDLE.getString("label.cacheSizeLimit.tooltip"));
+        searchOptionField.setToolTipText(BUNDLE.getString("label.searchOption.tooltip"));
 
         cellSizeLabel.setToolTipText(BUNDLE.getString("label.cellSize.tooltip"));
         cellPaddingLabel.setToolTipText(BUNDLE.getString("label.cellPadding.tooltip"));
         threadsLabel.setToolTipText(BUNDLE.getString("label.threads.tooltip"));
         cacheBufferLabel.setToolTipText(BUNDLE.getString("label.cacheBuffer.tooltip"));
         cacheSizeLimitLabel.setToolTipText(BUNDLE.getString("label.cacheSizeLimit.tooltip"));
+        searchOptionLabel.setToolTipText(BUNDLE.getString("label.searchOption.tooltip"));
 
         cellSizeLabel.setLabelFor(cellSizeField);
         cellPaddingLabel.setLabelFor(cellPaddingField);
         threadsLabel.setLabelFor(threadsField);
         cacheBufferLabel.setLabelFor(cacheBufferField);
         cacheSizeLimitLabel.setLabelFor(cacheSizeLimitField);
+        searchOptionLabel.setLabelFor(searchOptionField);
 
         JButton applyButton = new JButton(BUNDLE.getString("button.apply"));
         JButton saveButton = new JButton(BUNDLE.getString("button.save"));
@@ -131,6 +137,9 @@ public class OptionDialog extends JDialog {
         c.gridy++;
         optionPane.add(cacheSizeLimitLabel, c);
 
+        c.gridy++;
+        optionPane.add(searchOptionLabel, c);
+
         c.gridwidth = 2;
         c.weightx = 1;
         c.gridx = 1;
@@ -151,6 +160,9 @@ public class OptionDialog extends JDialog {
 
         c.gridy++;
         optionPane.add(cacheSizeLimitField, c);
+
+        c.gridy++;
+        optionPane.add(searchOptionField, c);
 
         controlButtonPanel.setLayout(new FlowLayout(FlowLayout.TRAILING));
         controlButtonPanel.add(saveButton);
@@ -181,6 +193,7 @@ public class OptionDialog extends JDialog {
         $("Threads", JSpinner.class).setValue(options.threads);
         $("CacheBuffer", JSpinner.class).setValue(options.cacheBuffer);
         $("CacheSizeLimit", JSpinner.class).setValue(options.cacheSizeLimit);
+        $("SearchOption", JComboBox.class).setSelectedItem(options.searchOption);
     }
 
     private ApplicationOptions getOptions() {
@@ -191,7 +204,8 @@ public class OptionDialog extends JDialog {
         int threads = Math.clamp((int) $("Threads", JSpinner.class).getValue(), 1, Runtime.getRuntime().availableProcessors());
         int cacheBuffer = Math.clamp((int) $("CacheBuffer", JSpinner.class).getValue(), 0, Integer.MAX_VALUE);
         int cacheSizeLimit = Math.clamp((int) $("CacheSizeLimit", JSpinner.class).getValue(), 0, Integer.MAX_VALUE / 1024 / 1024);
-        return new ApplicationOptions(darkMode, fastTarget, cellSize, cellPadding, threads, cacheBuffer, cacheSizeLimit);
+        TaggedFileListModel.SearchOption searchOption = (TaggedFileListModel.SearchOption) $("SearchOption", JComboBox.class).getSelectedItem();
+        return new ApplicationOptions(darkMode, fastTarget, cellSize, cellPadding, threads, cacheBuffer, cacheSizeLimit, searchOption);
     }
 
     public Consumer<ApplicationOptions> getOnOptionsApplied() {
@@ -230,6 +244,7 @@ public class OptionDialog extends JDialog {
             int cellPadding,
             int threads,
             int cacheBuffer,
-            int cacheSizeLimit
+            int cacheSizeLimit,
+            TaggedFileListModel.SearchOption searchOption
     ) { }
 }

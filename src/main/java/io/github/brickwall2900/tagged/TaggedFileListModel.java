@@ -7,6 +7,7 @@ import java.util.stream.Stream;
 public class TaggedFileListModel extends AbstractListModel<TaggedHelper.FileTag> {
     private final List<TaggedHelper.FileTag> files = new ArrayList<>();
     private List<TaggedHelper.FileTag> filterList;
+    private SearchOption searchOption = SearchOption.LENIENT;
     private String filter;
 
     public void addAll(TaggedHelper.FileTag[] files) {
@@ -27,6 +28,17 @@ public class TaggedFileListModel extends AbstractListModel<TaggedHelper.FileTag>
         int lastIndex = files.size() - 1;
         files.clear();
         fireIntervalRemoved(this, 0, lastIndex);
+    }
+
+    public SearchOption getSearchOption() {
+        return searchOption;
+    }
+
+    public void setSearchOption(SearchOption searchOption) {
+       this.searchOption = searchOption != null ? searchOption : SearchOption.LENIENT;
+       if (filter != null) {
+           updateFilter();
+       }
     }
 
     public String getFilter() {
@@ -96,26 +108,43 @@ public class TaggedFileListModel extends AbstractListModel<TaggedHelper.FileTag>
 //                })
 //                .toList();
         record Meta(TaggedHelper.FileTag fileTag, String joined) {}
-        return files.parallelStream()
+        Stream<Meta> stream = files.parallelStream()
                 .filter(x -> x.tags().length > 0)
-                .map(x -> new Meta(x, String.join("", x.tags()).toLowerCase(Locale.ROOT)))
-                /*.filter(m -> {
+                .map(x -> new Meta(x, String.join("", x.tags()).toLowerCase(Locale.ROOT)));
+
+        stream = switch (searchOption) {
+            case STRICT -> {
+                yield stream.filter(m -> {
                     boolean canInclude = true;
                     for (String keyword : searchKeywords) {
                         canInclude &= m.joined.contains(keyword);
                     }
                     return canInclude;
-                })
-                 */
-                .sorted(Comparator.comparingInt(m -> {
-                    int score = 0;
+                });
+            }
+            case LENIENT -> {
+                yield stream.filter(m -> {
+                    boolean canInclude = false;
                     for (String keyword : searchKeywords) {
-                        if (((Meta)m).joined.contains(keyword)) {
-                            score++;
-                        }
+                        canInclude |= m.joined.contains(keyword);
                     }
-                    return score;
-                }).reversed())
+                    return canInclude;
+                });
+            }
+            case SCORED -> {
+                yield stream;
+            }
+        };
+
+        return stream.sorted(Comparator.comparingInt(m -> {
+            int score = 0;
+            for (String keyword : searchKeywords) {
+                if (((Meta)m).joined.contains(keyword)) {
+                    score++;
+                }
+            }
+            return score;
+        }).reversed())
                 .map(Meta::fileTag)
                 .toList();
 
@@ -144,5 +173,9 @@ public class TaggedFileListModel extends AbstractListModel<TaggedHelper.FileTag>
                 updateFilter();
             }
         }
+    }
+
+    public enum SearchOption {
+        SCORED, LENIENT, STRICT;
     }
 }

@@ -37,6 +37,7 @@ public class Tagged extends JFrame {
     public static final String PREF_KEY_CACHE_SIZE_LIMIT = "CacheSizeLimit";
     public static final String PREF_KEY_DARK_MODE = "DarkMode";
     public static final String PREF_KEY_FAST_TARGET = "FastTarget";
+    public static final String PREF_KEY_SEARCH_OPTION = "SearchOption";
 
     static {
         try {
@@ -83,7 +84,7 @@ public class Tagged extends JFrame {
 
         addWindowListener(new WindowAdapter() {
             @Override
-            public void windowClosing(WindowEvent e) {
+            public void windowClosed(WindowEvent e) {
                 onWindowClose();
             }
         });
@@ -91,7 +92,7 @@ public class Tagged extends JFrame {
         setTitle(BUNDLE.getString("title"));
         pack();
         setLocationByPlatform(true);
-        setDefaultCloseOperation(EXIT_ON_CLOSE);
+        setDefaultCloseOperation(DISPOSE_ON_CLOSE);
     }
 
     private void initContentPane() {
@@ -129,16 +130,25 @@ public class Tagged extends JFrame {
             }
         };
         list.setName("FileTagList");
-        list.setModel(new TaggedFileListModel());
+        TaggedFileListModel model = new TaggedFileListModel();
+        list.setModel(model);
+
         TaggedFileListCellRenderer cellRenderer = new TaggedFileListCellRenderer(iconManager);
         list.setCellRenderer(cellRenderer);
         cellRenderer.setCellPadding(preferences.getInt(PREF_KEY_CELL_PADDING, 32));
         cellRenderer.setIconLoadedBuffer(preferences.getInt(PREF_KEY_CACHE_BUFFER, 50));
+
         list.setLayoutOrientation(JList.HORIZONTAL_WRAP);
         list.setVisibleRowCount(-1);
+
         int cellSize = preferences.getInt(PREF_KEY_CELL_SIZE, 96);
         list.setFixedCellWidth(cellSize);
         list.setFixedCellHeight(cellSize);
+
+        TaggedFileListModel.SearchOption searchOption = TaggedFileListModel.SearchOption.valueOf(
+                preferences.get(PREF_KEY_SEARCH_OPTION, TaggedFileListModel.SearchOption.LENIENT.name())
+        );
+        model.setSearchOption(searchOption);
 
         JPopupMenu popupMenu = new JPopupMenu();
         initContextMenu(popupMenu::add, popupMenu::addSeparator);
@@ -612,7 +622,10 @@ public class Tagged extends JFrame {
                 preferences.getInt(PREF_KEY_THREAD_COUNT,
                         (int) (Runtime.getRuntime().availableProcessors() / 1.25)),
                 preferences.getInt(PREF_KEY_CACHE_BUFFER, 50),
-                preferences.getInt(PREF_KEY_CACHE_SIZE_LIMIT, 0)
+                preferences.getInt(PREF_KEY_CACHE_SIZE_LIMIT, 0),
+                TaggedFileListModel.SearchOption.valueOf(
+                        preferences.get(PREF_KEY_SEARCH_OPTION, TaggedFileListModel.SearchOption.LENIENT.name())
+                )
         ));
         optionDialog.setOnOptionsApplied((options) -> {
             preferences.putInt(PREF_KEY_CELL_SIZE, Math.clamp(options.cellSize(), 32, Short.MAX_VALUE));
@@ -622,15 +635,19 @@ public class Tagged extends JFrame {
             preferences.putInt(PREF_KEY_THREAD_COUNT, options.threads());
             preferences.putBoolean(PREF_KEY_DARK_MODE, options.darkMode());
             preferences.putBoolean(PREF_KEY_FAST_TARGET, options.fastTarget());
+            preferences.put(PREF_KEY_SEARCH_OPTION, String.valueOf(options.searchOption()));
 
             setDarkMode(options.darkMode(), optionDialog);
             // specifically for dark mode ;-;);
             helper.changeThreadCount(options.threads());
 
             JList<TaggedHelper.FileTag> list = $("FileTagList", JList.class);
+            TaggedFileListModel model = (TaggedFileListModel) list.getModel();
             TaggedFileListCellRenderer cellRenderer = (TaggedFileListCellRenderer) list.getCellRenderer();
             cellRenderer.setCellPadding(options.cellPadding());
             cellRenderer.setIconLoadedBuffer(options.cacheBuffer());
+
+            model.setSearchOption(options.searchOption());
 
             int cellSize = options.cellSize();
             list.setFixedCellWidth(cellSize);
@@ -839,6 +856,7 @@ public class Tagged extends JFrame {
     }
 
     private void onWindowClose() {
+        System.out.println("Shutting down!");
         try {
             preferences.flush();
         } catch (BackingStoreException e) {
@@ -848,6 +866,8 @@ public class Tagged extends JFrame {
         repaintTimer.stop();
         iconManager.shutdown();
         helper.shutdown();
+        System.out.println("Goodbye!");
+        System.exit(0);
     }
 
     private final TaggedHelper helper;
