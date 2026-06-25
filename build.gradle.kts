@@ -1,8 +1,9 @@
 plugins {
     id("java")
+    id("application")
 }
 
-group = "io.github.brickwall2900.images"
+group = "io.github.brickwall2900.tagged"
 version = "1.0.0"
 
 repositories {
@@ -21,6 +22,10 @@ dependencies {
     implementation(libs.hashing)
     implementation(libs.fastutil)
     implementation(libs.gson)
+}
+
+application {
+    mainClass = "io.github.brickwall2900.tagged.Tagged"
 }
 
 tasks.test {
