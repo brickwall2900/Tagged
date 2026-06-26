@@ -1,6 +1,7 @@
 plugins {
     id("java")
     id("application")
+    id("com.github.jk1.dependency-license-report").version("2.9")
 }
 
 group = "io.github.brickwall2900.tagged"
@@ -26,6 +27,20 @@ dependencies {
 
 application {
     mainClass = "io.github.brickwall2900.tagged.Tagged"
+}
+
+licenseReport {
+    outputDir = layout.buildDirectory.dir("licenses").get().toString()
+}
+
+distributions {
+    main {
+        contents {
+            into("licenses") {
+                from(tasks.generateLicenseReport)
+            }
+        }
+    }
 }
 
 tasks.test {
