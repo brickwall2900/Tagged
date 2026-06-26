@@ -11,21 +11,40 @@ public class TaggedFileListModel extends AbstractListModel<TaggedHelper.FileTag>
     private String filter;
 
     public void addAll(TaggedHelper.FileTag[] files) {
-        Set<TaggedHelper.FileTag> set = new HashSet<>(Set.of(files));
-        this.files.removeIf(set::contains);
-        int startIndex = Math.max(getSize() - 1, 0);
-        this.files.addAll(List.of(files));
-        int endIndex = Math.max(getSize() - 1, 0);
+        int oldSize = this.files.size();
+        int fileCount = files.length;
+        for (int i = 0; i < fileCount; i++) {
+            TaggedHelper.FileTag currentFile = files[i];
+            int indexOfExistingTag = this.files.indexOf(currentFile);
+            if (indexOfExistingTag != -1) {
+                // what the fuck
+                TaggedHelper.FileTag existingTag = this.files.get(indexOfExistingTag);
+                String[] tags1 = currentFile.tags();
+                String[] tags2 = existingTag.tags();
+                if (tags2.length > 0 && tags1.length > 0) {
+                    String[] merged = new String[tags1.length + tags2.length];
+                    System.arraycopy(tags1, 0, merged, 0, tags1.length);
+                    System.arraycopy(tags2, tags1.length, merged, tags1.length, tags2.length);
+                    this.files.set(indexOfExistingTag, new TaggedHelper.FileTag(currentFile.locationPath(), currentFile.fileName(), merged));
+                } else if (tags2.length == 0 && tags1.length > 0) {
+                    this.files.set(indexOfExistingTag, currentFile);
+                }
+            } else {
+                this.files.add(currentFile);
+            }
+        }
+        this.files.sort(Comparator.comparing(TaggedHelper.FileTag::fileName));
 
         if (filter == null) {
-            fireIntervalAdded(this, startIndex, endIndex);
+            fireIntervalRemoved(this, 0, oldSize);
+            fireIntervalAdded(this, 0, this.files.size());
         } else {
             updateFilter();
         }
     }
 
     public void clear() {
-        int lastIndex = files.size() - 1;
+        int lastIndex = Math.max(files.size() - 1, 0);
         files.clear();
         fireIntervalRemoved(this, 0, lastIndex);
     }

@@ -4,7 +4,6 @@ import javax.swing.*;
 import javax.swing.border.Border;
 import javax.swing.plaf.synth.SynthListUI;
 import java.awt.*;
-import java.nio.file.Path;
 
 /// half of the code belongs to {@link DefaultListCellRenderer} lol
 public class TaggedFileListCellRenderer extends JLabel implements ListCellRenderer<TaggedHelper.FileTag> {
@@ -68,8 +67,8 @@ public class TaggedFileListCellRenderer extends JLabel implements ListCellRender
         entries += iconLoadedBuffer;
         iconManager.setMaxEntries(entries);
 
-        setIcon(iconManager.getIcon(value.filePath(), list));
-        setText(value.filePath().getFileName().toString());
+        setIcon(iconManager.getIcon(value.locationPath(), list));
+        setText(value.fileName().toString());
 
         if (list.getName() == null || !list.getName().equals("ComboBox.list")
                 || !(list.getUI() instanceof SynthListUI)) {

@@ -20,8 +20,10 @@ import java.util.stream.Collector;
 import java.util.stream.Stream;
 
 public class TaggedHelper {
+    public static final String INDEX_FILE_NAME = ".taggedindex";
+    private static final short FILE_VERSION = 2;
+    private static final int FILE_HEADER = 0x54616764;
     private static final Path TAGGED_DIRECTORY = Path.of(System.getProperty("user.home"), ".tagged");
-    private static final Path INDEX_FILE = TAGGED_DIRECTORY.resolve("index");
     private static final Path LOCATION_FILE = TAGGED_DIRECTORY.resolve("locations");
     private final Tagged tagged;
 
@@ -37,27 +39,30 @@ public class TaggedHelper {
     private ExecutorService executor;
 
     // i don't know but the children yearn for another data structure or smth
-    private Long2ObjectMap<FileTag> hashToFileTagMap = new Long2ObjectOpenHashMap<>();
+    private Map<Path, Long2ObjectMap<FileTag>> locationToHashToFileTagMap = new HashMap<>();
 
     public TaggedHelper(Tagged tagged) {
         this.tagged = tagged;
         executor = Executors.newFixedThreadPool((int) (Runtime.getRuntime().availableProcessors() / 1.25));
     }
 
-    public SwingWorkerWithDone<FileTag[], Void> newIndexWorkerAsync(Path location) {
-        return new FileIndexWorker(hashToFileTagMap, location);
+    public SwingWorkerWithDone<FileTag[], Void> newIndexWorkerAsync(Long2ObjectMap<FileTag> map, Path location) {
+        return new FileIndexWorker(map, location);
     }
 
     public SwingWorkerWithDone<Long2ObjectMap<FileTag>, Void> newIndexHashWorkerAsync(FileTag[] tags) {
         return new IndexHashWorker(tags);
     }
 
-    public SwingWorkerWithDone<Void, Void> newIndexWriterAsync(Long2ObjectMap<FileTag> map) {
-        return new TagsWriter(map, INDEX_FILE);
+    public SwingWorkerWithDone<Void, Void> newIndexWriterAsync(Long2ObjectMap<FileTag> map, Path location) {
+        return new TagsWriter(map, location.resolve(INDEX_FILE_NAME));
     }
 
-    public SwingWorkerWithDone<Long2ObjectMap<FileTag>, Void> newIndexReaderAsync() {
-        return new TagsReader(INDEX_FILE);
+    public SwingWorkerWithDone<Long2ObjectMap<FileTag>, Void> newIndexReaderAsync(Path location) {
+        Path oldIndexPath = TAGGED_DIRECTORY.resolve("index");
+        return !Files.isRegularFile(oldIndexPath)
+                ? new TagsReader(location.resolve(INDEX_FILE_NAME))
+                : new OldTagsReader();
     }
 
     public SwingWorkerWithDone<Void, Void> newLocationWriterAsync(List<Path> locations) {
@@ -68,8 +73,8 @@ public class TaggedHelper {
         return new LocationReader(LOCATION_FILE);
     }
 
-    public boolean doesIndexExist() {
-        return Files.exists(INDEX_FILE);
+    public boolean doesIndexExist(Path indexFile) {
+        return Files.exists(indexFile);
     }
 
     public boolean doesLocationExist() {
@@ -80,24 +85,42 @@ public class TaggedHelper {
         return executor;
     }
 
-    public Long2ObjectMap<FileTag> getHashToFileTagMap() {
-        return hashToFileTagMap;
+    public Long2ObjectMap<FileTag> getHashToFileTagMap(Path parentDirectory) {
+        return locationToHashToFileTagMap.get(parentDirectory);
     }
 
-    public void setHashToFileTagMap(Long2ObjectMap<FileTag> hashToFileTagMap) {
-        this.hashToFileTagMap = hashToFileTagMap;
+    public void setHashToFileTagMap(Path parentDirectory, Long2ObjectMap<FileTag> hashToFileTagMap) {
+        this.locationToHashToFileTagMap.put(parentDirectory, hashToFileTagMap);
+    }
+
+    public Map<Path, Long2ObjectMap<FileTag>> getLocationToHashToFileTagMap() {
+        return locationToHashToFileTagMap;
     }
 
     private static long calculateHash(FileTag fileTag) {
-        return LongHashFunction.xx().hashChars(fileTag.filePath.toString());
+        return calculateHash(fileTag.fileName);
+    }
+
+    private static long calculateHash(Path path) {
+        return LongHashFunction.xx().hashChars(path.toString());
     }
 
     public void storeTag(FileTag tag) {
-        long hash = calculateHash(tag);
-        if (tag.tags().length == 0 && hashToFileTagMap.containsKey(hash)) {
-            hashToFileTagMap.remove(hash);
-        } else {
-            hashToFileTagMap.put(hash, tag);
+        Path location = locationToHashToFileTagMap.keySet()
+                .stream()
+                .filter(tag.locationPath::startsWith)
+                .findFirst()
+                .orElse(null);
+        if (location != null) {
+            Long2ObjectMap<FileTag> hashToFileTagMap = getHashToFileTagMap(location);
+            long hash = calculateHash(tag);
+            boolean present = hashToFileTagMap.containsKey(hash);
+            boolean hasTags = tag.tags.length > 0;
+            if (!hasTags && present) {
+                hashToFileTagMap.remove(hash);
+            } else if (!present && hasTags) {
+                hashToFileTagMap.put(hash, tag);
+            }
         }
     }
 
@@ -122,23 +145,27 @@ public class TaggedHelper {
     }
 
     // okay so how would Tagged work?
-    public record FileTag(Path filePath, String[] tags) {
+    public record FileTag(Path locationPath, Path fileName, String[] tags) {
+        public FileTag(Path fileName, String[] tags) {
+            this(null, fileName, tags);
+        }
+
         @Override
         public boolean equals(Object o) {
             if (o == null || getClass() != o.getClass()) return false;
             FileTag fileTag = (FileTag) o;
-            return Objects.equals(filePath, fileTag.filePath);
+            return Objects.equals(fileName, fileTag.fileName);
         }
 
         @Override
         public int hashCode() {
-            return Objects.hashCode(filePath);
+            return Objects.hashCode(fileName);
         }
 
         @Override
         public String toString() {
             return "FileTag[" +
-                    "filePath=" + filePath + ", " +
+                    "fileName=" + fileName + ", " +
                     "tags=" + Arrays.toString(tags) + ']';
         }
     }
@@ -239,17 +266,19 @@ public class TaggedHelper {
         @Override
         protected Void doInBackground() throws Exception {
             if (Files.exists(destination)) {
-                Path backupDest = destination.getParent().resolve("index-" +
+                Path backupDest = destination.getParent().resolve(".taggedindex-" +
                         Files.getLastModifiedTime(destination).toMillis());
                 Files.copy(destination, backupDest, StandardCopyOption.REPLACE_EXISTING,
                         StandardCopyOption.COPY_ATTRIBUTES);
 
-                deleteExtra();
+                deleteExtra(destination.getParent());
             }
 
             try (DataOutputStream outputStream = new DataOutputStream(new BufferedOutputStream(
                     Files.newOutputStream(destination)))) {
                 Iterator<Long2ObjectMap.Entry<FileTag>> iterator = Long2ObjectMaps.fastIterator(files);
+                outputStream.writeInt(FILE_HEADER);
+                outputStream.writeShort(FILE_VERSION);
                 outputStream.writeInt(files.size());
                 while (iterator.hasNext()) {
                     Long2ObjectMap.Entry<FileTag> entry = iterator.next();
@@ -262,10 +291,10 @@ public class TaggedHelper {
             return null;
         }
 
-        private static void deleteExtra() throws IOException {
-            try (Stream<Path> list = Files.list(TAGGED_DIRECTORY)) {
-                List<Path> candidates = list
-                        .filter(x -> x.getFileName().toString().toLowerCase().startsWith("index-"))
+        private static void deleteExtra(Path directory) throws IOException {
+            try (Stream<Path> list = Files.list(directory)) {
+                List<Path> candidates = new ArrayList<>(list
+                        .filter(x -> x.getFileName().toString().toLowerCase().startsWith(".taggedindex-"))
                         .sorted(Comparator.comparingLong(x -> {
                             try {
                                 return Files.getLastModifiedTime(x).toMillis();
@@ -273,9 +302,9 @@ public class TaggedHelper {
                                 throw new UncheckedIOException(e);
                             }
                         }))
-                        .toList();
-                if (candidates.size() > 5) {
-                    Path candidate = candidates.getFirst();
+                        .toList());
+                while (candidates.size() > 5) {
+                    Path candidate = candidates.removeFirst();
                     Files.deleteIfExists(candidate);
                 }
             }
@@ -284,9 +313,9 @@ public class TaggedHelper {
         private void write(DataOutputStream outputStream, long hash, FileTag file) throws IOException {
             String[] tags = file.tags;
             int tagCount = tags.length;
-            if (tagCount == 0) return;
+            assert tagCount != 0 : "tag count not empty";
 
-            writeString(file.filePath.toString(), outputStream);
+            writeString(file.fileName.getFileName().toString(), outputStream);
             outputStream.writeLong(hash);
             outputStream.writeInt(tagCount);
             for (int i = 0; i < tagCount; i++) {
@@ -297,11 +326,12 @@ public class TaggedHelper {
 
         private void writeString(String string, DataOutputStream outputStream) throws IOException {
             int length = string.length();
-            boolean longString = length> 65535;
+            boolean longString = length > 65535;
             outputStream.writeBoolean(longString);
             if (longString) {
-                outputStream.writeInt(length);
-                outputStream.write(string.getBytes(StandardCharsets.UTF_8));
+                byte[] bytes = string.getBytes(StandardCharsets.UTF_8);
+                outputStream.writeInt(bytes.length);
+                outputStream.write(bytes);
             } else {
                 outputStream.writeUTF(string);
             }
@@ -323,6 +353,16 @@ public class TaggedHelper {
 
             Long2ObjectMap<FileTag> list = new Long2ObjectOpenHashMap<>();
             try (DataInputStream inputStream = new DataInputStream(Files.newInputStream(source))) {
+                int fileHeader = inputStream.readInt();
+                if (fileHeader != FILE_HEADER) {
+                    throw new IllegalStateException("file header mismatch");
+                }
+
+                short version = inputStream.readShort();
+                if (version != FILE_VERSION) {
+                    throw new IllegalStateException("bad file version: " + version);
+                }
+
                 int count = inputStream.readInt();
                 long[] hashOut = new long[1];
 
@@ -348,6 +388,67 @@ public class TaggedHelper {
 
             hashOut[0] = hash;
             return new FileTag(filePath, tags);
+        }
+
+        private String readString(DataInputStream inputStream) throws IOException {
+            boolean longString = inputStream.readBoolean();
+            if (longString) {
+                int size = inputStream.readInt();
+                byte[] bytes = new byte[size];
+                if (inputStream.read(bytes) != size) {
+                    throw new EOFException();
+                }
+                return new String(bytes);
+            } else {
+                return inputStream.readUTF();
+            }
+        }
+    }
+
+    private static final class OldTagsReader extends SwingWorkerWithDone<Long2ObjectMap<FileTag>, Void> {
+        private final Path source;
+
+        private OldTagsReader() {
+            source = TAGGED_DIRECTORY.resolve("index");
+        }
+
+        @Override
+        protected Long2ObjectMap<FileTag> doInBackground() throws Exception {
+            if (Files.notExists(source)) {
+                throw new FileNotFoundException("path not found");
+            }
+
+            Long2ObjectMap<FileTag> list = new Long2ObjectOpenHashMap<>();
+            try (DataInputStream inputStream = new DataInputStream(Files.newInputStream(source))) {
+                int count = inputStream.readInt();
+                long[] hashOut = new long[1];
+
+                for (int i = 0; i < count; i++) {
+                    FileTag tag = read(inputStream, hashOut);
+                    list.put(hashOut[0], tag);
+                }
+            }
+
+            Files.deleteIfExists(source);
+
+            return list;
+        }
+
+        private FileTag read(DataInputStream inputStream, long[] hashOut) throws IOException {
+            Path originalFilePath = Path.of(readString(inputStream));
+            Path fileName = originalFilePath.getFileName();
+            long hash = inputStream.readLong();
+            hash = calculateHash(fileName);
+
+            int tagCount = inputStream.readInt();
+            String[] tags = new String[tagCount];
+
+            for (int i = 0; i < tagCount; i++) {
+                tags[i] = readString(inputStream);
+            }
+
+            hashOut[0] = hash;
+            return new FileTag(fileName, tags);
         }
 
         private String readString(DataInputStream inputStream) throws IOException {
@@ -411,7 +512,8 @@ public class TaggedHelper {
                 AtomicLong progress = new AtomicLong();
                 return stream
                         .filter(Files::isRegularFile)
-                        .map(p -> new FileTag(p, new String[0]))
+                        .filter(x -> !x.getFileName().toString().startsWith(".taggedindex"))
+                        .map(p -> new FileTag(p, p.getFileName(), new String[0]))
                         .peek(_ -> firePropertyChange(
                                 "progress",
                                 progress.get(),
@@ -419,12 +521,13 @@ public class TaggedHelper {
                         .peek(p -> firePropertyChange(
                                 "path",
                                 null,
-                                p.filePath))
-                        .sorted(Comparator.comparing(p -> p.filePath))
+                                p.fileName))
+                        .sorted(Comparator.comparing(p -> p.fileName))
                         .map(x -> {
                             // BROOOOOO WHAT IN THE ACTUAL FUCKKK
                             if (fileTags.containsValue(x)) {
-                                return fileTags.get(calculateHash(x));
+                                FileTag indexFileTag = fileTags.get(calculateHash(x));
+                                return new FileTag(x.locationPath, indexFileTag.fileName, indexFileTag.tags);
                             } else {
                                 return x;
                             }

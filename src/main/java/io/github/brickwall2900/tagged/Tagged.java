@@ -8,13 +8,13 @@ import io.github.brickwall2900.swing.core.DialogBuilder;
 import io.github.brickwall2900.swing.core.TargetLocator;
 import io.github.brickwall2900.tagged.gif.GifImageWrapperIcon;
 import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
+import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 
 import javax.imageio.ImageIO;
 import javax.swing.*;
 import javax.swing.Timer;
 import javax.swing.event.DocumentEvent;
 import java.awt.*;
-import java.awt.desktop.QuitStrategy;
 import java.awt.event.*;
 import java.io.IOException;
 import java.io.InputStream;
@@ -304,8 +304,8 @@ public class Tagged extends JFrame {
         return locationsUnmodifiable;
     }
 
-    private void startIndexing(Path newLocation) {
-        SwingWorkerWithDone<TaggedHelper.FileTag[], Void> worker = helper.newIndexWorkerAsync(newLocation);
+    private void startIndexing(Long2ObjectMap<TaggedHelper.FileTag> map, Path newLocation) {
+        SwingWorkerWithDone<TaggedHelper.FileTag[], Void> worker = helper.newIndexWorkerAsync(map, newLocation);
         worker.addPropertyChangeListener(evt -> {
             if (Objects.equals("path", evt.getPropertyName())) {
                 updateStatusBar(BUNDLE.getString("status.finding").formatted(evt.getNewValue()));
@@ -320,7 +320,7 @@ public class Tagged extends JFrame {
 
                 model.addAll(files);
                 updateStatusBarImmediate(BUNDLE.getString("status.finding.done").formatted(files.length));
-                startIndexHashing(files);
+                startIndexHashing(newLocation, files);
             }
         });
         worker.execute();
@@ -336,22 +336,22 @@ public class Tagged extends JFrame {
         worker.execute();
     }
 
-    private void startIndexHashing(TaggedHelper.FileTag[] files) {
+    private void startIndexHashing(Path parentDirectory, TaggedHelper.FileTag[] files) {
         SwingWorkerWithDone<Long2ObjectMap<TaggedHelper.FileTag>, Void> worker = helper.newIndexHashWorkerAsync(files);
         worker.onDone((list, exception) -> {
             if (exception != null) {
                 showError(BUNDLE.getString("error.indexing.hashIndexError"), exception);
             } else {
                 System.out.printf("%d items hashed%n", list.size());
-                helper.getHashToFileTagMap().putAll(list);
-                startIndexWriting(list);
+                helper.getHashToFileTagMap(parentDirectory).putAll(list);
+                startIndexWriting(parentDirectory, list);
             }
         });
         worker.execute();
     }
 
-    private void startIndexWriting(Long2ObjectMap<TaggedHelper.FileTag> list) {
-        SwingWorkerWithDone<Void, Void> worker = helper.newIndexWriterAsync(list);
+    private void startIndexWriting(Path parentDirectory, Long2ObjectMap<TaggedHelper.FileTag> list) {
+        SwingWorkerWithDone<Void, Void> worker = helper.newIndexWriterAsync(list, parentDirectory);
         worker.onDone((_, exception) -> {
             if (exception != null) {
                 showError(BUNDLE.getString("error.indexing.indexWrite"), exception);
@@ -362,8 +362,8 @@ public class Tagged extends JFrame {
         worker.execute();
     }
 
-    private void startIndexWritingAndWait(Long2ObjectMap<TaggedHelper.FileTag> list) {
-        SwingWorkerWithDone<Void, Void> worker = helper.newIndexWriterAsync(list);
+    private void startIndexWritingAndWait(Path parentDirectory, Long2ObjectMap<TaggedHelper.FileTag> list) {
+        SwingWorkerWithDone<Void, Void> worker = helper.newIndexWriterAsync(list, parentDirectory);
         worker.onDone((_, exception) -> {
             if (exception != null) {
                 showError(BUNDLE.getString("error.indexing.indexWrite"), exception);
@@ -398,12 +398,12 @@ public class Tagged extends JFrame {
     }
 
     private void loadStuff() {
-        if (helper.doesIndexExist()) {
-            loadIndices();
+        if (helper.doesLocationExist()) {
+            loadLocationsAndIndices();
         }
     }
 
-    private void loadLocations() {
+    private void loadLocationsAndIndices() {
         // SON what am i doing???
         // I AM A BOUT TO GET SLIMED OMY
         $(getJMenuBar(), "MenuAddLocation", JMenuItem.class).setEnabled(false);
@@ -416,25 +416,22 @@ public class Tagged extends JFrame {
                 $(getJMenuBar(), "MenuAddLocation", JMenuItem.class).setEnabled(true);
 
                 for (Path location : result) {
-                    startIndexing(location);
+                    loadIndices(location);
                 }
             }
         });
         worker.execute();
     }
 
-    private void loadIndices() {
-        SwingWorkerWithDone<Long2ObjectMap<TaggedHelper.FileTag>, Void> worker = helper.newIndexReaderAsync();
+    private void loadIndices(Path location) {
+        SwingWorkerWithDone<Long2ObjectMap<TaggedHelper.FileTag>, Void> worker = helper.newIndexReaderAsync(location);
         worker.onDone((result, exception) -> {
             if (exception != null) {
                 showError(BUNDLE.getString("error.loading.indexRead"), exception);
             } else {
-                helper.setHashToFileTagMap(result);
+                helper.setHashToFileTagMap(location, result);
+                startIndexing(result, location);
                 updateStatusBarImmediate("Indices loaded");
-
-                if (helper.doesLocationExist()) {
-                    loadLocations();
-                }
             }
         });
         worker.execute();
@@ -611,12 +608,17 @@ public class Tagged extends JFrame {
 
         startWritingLocation(locations);
         for (Path location : locations) {
-            startIndexing(location);
+            Long2ObjectMap<TaggedHelper.FileTag> map = helper.getHashToFileTagMap(location);
+            map = map != null ? map : new Long2ObjectOpenHashMap<>();
+            helper.setHashToFileTagMap(location, map);
+            startIndexing(map, location);
         }
     }
 
     private void onSaveTagsMenuItemPressed(ActionEvent e) {
-        startIndexWriting(helper.getHashToFileTagMap());
+        for (Path location : locations) {
+            startIndexWriting(location, helper.getHashToFileTagMap(location));
+        }
     }
 
     @SuppressWarnings("unchecked")
@@ -635,7 +637,7 @@ public class Tagged extends JFrame {
             //t.push("MinDelayTimeGet");
             for (int i = firstVisibleIndex; i < lastVisibleIndex + 1; i++) {
                 TaggedHelper.FileTag fileTag = model.getElementAt(i);
-                Path filePath = fileTag.filePath();
+                Path filePath = fileTag.locationPath();
                 result.add(filePath);
             }
             long minDelayTime = iconManager.getMinimumRefreshTime(
@@ -781,7 +783,7 @@ public class Tagged extends JFrame {
         JList<TaggedHelper.FileTag> list = $("FileTagList", JList.class);
         TaggedHelper.FileTag selected = list.getSelectedValue();
         if (selected != null) {
-            tryOpeningFile(selected.filePath());
+            tryOpeningFile(selected.locationPath());
         }
     }
 
@@ -790,7 +792,7 @@ public class Tagged extends JFrame {
         JList<TaggedHelper.FileTag> list = $("FileTagList", JList.class);
         TaggedHelper.FileTag selected = list.getSelectedValue();
         if (selected != null) {
-            tryBrowsingFile(selected.filePath());
+            tryBrowsingFile(selected.locationPath());
         }
     }
 
@@ -814,7 +816,7 @@ public class Tagged extends JFrame {
 
             DialogBuilder builder = DialogBuilder.builder()
                     //.content(panel)
-                    .content(BUNDLE.getString("dialog.tagEditor").formatted(selected.filePath()))
+                    .content(BUNDLE.getString("dialog.tagEditor").formatted(selected.fileName()))
                     .messageType(JOptionPane.QUESTION_MESSAGE)
                     .optionType(JOptionPane.OK_CANCEL_OPTION)
                     .setModalityType(Dialog.ModalityType.APPLICATION_MODAL)
@@ -840,7 +842,7 @@ public class Tagged extends JFrame {
                     tags = new String[0];
                 }
 
-                TaggedHelper.FileTag newTag = new TaggedHelper.FileTag(selected.filePath(), tags);
+                TaggedHelper.FileTag newTag = new TaggedHelper.FileTag(selected.locationPath(), selected.fileName(), tags);
                 model.modify(selected, newTag);
                 helper.storeTag(newTag);
             } else if (Objects.equals(result, JOptionPane.CANCEL_OPTION)) {
@@ -858,7 +860,7 @@ public class Tagged extends JFrame {
             DialogBuilder builder = DialogBuilder.builder()
                     // is this mf obsessed with the stream API???
                     .content(BUNDLE.getString("dialog.removeTag").formatted(selected.stream()
-                            .map(TaggedHelper.FileTag::filePath)
+                            .map(TaggedHelper.FileTag::fileName)
                             .map(Path::toString)
                             .collect(Collectors.joining(", "))))
                     .messageType(JOptionPane.QUESTION_MESSAGE)
@@ -875,7 +877,8 @@ public class Tagged extends JFrame {
             Object result = optionPane.getValue();
             if (result != null && Objects.equals(result, JOptionPane.OK_OPTION)) {
                 for (TaggedHelper.FileTag fileTag : selected) {
-                    TaggedHelper.FileTag newTag = new TaggedHelper.FileTag(fileTag.filePath(), new String[0]);
+                    TaggedHelper.FileTag newTag = new TaggedHelper.FileTag(fileTag.locationPath(), fileTag.fileName(),
+                            new String[0]);
                     model.modify(fileTag, newTag);
                     helper.storeTag(newTag);
                 }
@@ -917,7 +920,9 @@ public class Tagged extends JFrame {
         } catch (BackingStoreException e) {
             showError(BUNDLE.getString("error.preferences.store"), e);
         }
-        startIndexWritingAndWait(helper.getHashToFileTagMap());
+        for (Path location : locations) {
+            startIndexWritingAndWait(location, helper.getHashToFileTagMap(location));
+        }
         repaintTimer.stop();
         iconManager.shutdown();
         helper.shutdown();
