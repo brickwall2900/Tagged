@@ -355,7 +355,7 @@ public class Tagged extends JFrame {
             if (exception != null) {
                 showError(BUNDLE.getString("error.indexing.indexWrite"), exception);
             } else {
-                updateStatusBarImmediate("Tags wrote to disk");
+                updateStatusBarImmediate(BUNDLE.getString("status.indexWritten"));
             }
         });
         worker.execute();
