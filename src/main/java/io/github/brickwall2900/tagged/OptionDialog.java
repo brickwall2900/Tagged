@@ -20,6 +20,7 @@ public class OptionDialog extends JDialog {
         initContentPane();
 
         setTitle(BUNDLE.getString("title"));
+        setIconImage(owner.getIconImage());
         pack();
         setDefaultCloseOperation(DISPOSE_ON_CLOSE);
         setLocationRelativeTo(owner);

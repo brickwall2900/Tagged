@@ -19,6 +19,7 @@ public class LocationDialog extends JDialog {
         initContentPane();
 
         setTitle(BUNDLE.getString("title"));
+        setIconImage(tagged.getIconImage());
         setModalityType(ModalityType.APPLICATION_MODAL);
         pack();
         setDefaultCloseOperation(DISPOSE_ON_CLOSE);

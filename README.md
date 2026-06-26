@@ -20,3 +20,9 @@ To make a JAR of this app: `gradlew jar`
 To run this app within Gradle: `gradlew run`
 
 To package this app for distribution: `gradlew assembleDist`
+
+## Icon
+<img alt="logo" src="icon/icon.png"/>
+
+The icon is inspired by [this meme](https://tenor.com/view/meme-who-are-you-tagging-gng-gif-7480716342697088315).
+It looked AI generated, so I redrew it by hand.

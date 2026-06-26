@@ -9,6 +9,7 @@ import io.github.brickwall2900.swing.core.TargetLocator;
 import io.github.brickwall2900.tagged.gif.GifImageWrapperIcon;
 import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
 
+import javax.imageio.ImageIO;
 import javax.swing.*;
 import javax.swing.Timer;
 import javax.swing.event.DocumentEvent;
@@ -16,6 +17,7 @@ import java.awt.*;
 import java.awt.desktop.QuitStrategy;
 import java.awt.event.*;
 import java.io.IOException;
+import java.io.InputStream;
 import java.lang.ref.Reference;
 import java.nio.file.Path;
 import java.util.*;
@@ -89,7 +91,15 @@ public class Tagged extends JFrame {
             }
         });
 
+        Image icon = null;
+        try (InputStream stream = Tagged.class.getResourceAsStream("icon.png")) {
+            icon = ImageIO.read(Objects.requireNonNull(stream));
+        } catch (IOException | NullPointerException e) {
+            e.printStackTrace();
+        }
+
         setTitle(BUNDLE.getString("title"));
+        setIconImage(icon);
         pack();
         setLocationByPlatform(true);
         setDefaultCloseOperation(DISPOSE_ON_CLOSE);
@@ -480,21 +490,23 @@ public class Tagged extends JFrame {
         }
 
         if (error != null) {
-            DialogBuilder.builder()
+            JDialog dialog = DialogBuilder.builder()
                     .title(getTitle())
                     .content(BUNDLE.getString("error.desktop.exception").formatted(error))
                     .messageType(JOptionPane.ERROR_MESSAGE)
-                    .build(this)
-                    .setVisible(true);
+                    .build(this);
+            dialog.setIconImage(getIconImage());
+            dialog.setVisible(true);
         }
 
         if (!desktopSupported) {
-            DialogBuilder.builder()
+            JDialog dialog = DialogBuilder.builder()
                     .title(getTitle())
                     .content(BUNDLE.getString("error.desktop.notSupported"))
                     .messageType(JOptionPane.ERROR_MESSAGE)
-                    .build(this)
-                    .setVisible(true);
+                    .build(this);
+            dialog.setIconImage(getIconImage());
+            dialog.setVisible(true);
         }
     }
 
@@ -517,21 +529,23 @@ public class Tagged extends JFrame {
         }
 
         if (error != null) {
-            DialogBuilder.builder()
+            JDialog dialog = DialogBuilder.builder()
                     .title(getTitle())
                     .content(BUNDLE.getString("error.desktop.exception").formatted(error))
                     .messageType(JOptionPane.ERROR_MESSAGE)
-                    .build(this)
-                    .setVisible(true);
+                    .build(this);
+            dialog.setIconImage(getIconImage());
+            dialog.setVisible(true);
         }
 
         if (!desktopSupported) {
-            DialogBuilder.builder()
+            JDialog dialog = DialogBuilder.builder()
                     .title(getTitle())
                     .content(BUNDLE.getString("error.desktop.notSupported"))
                     .messageType(JOptionPane.ERROR_MESSAGE)
-                    .build(this)
-                    .setVisible(true);
+                    .build(this);
+            dialog.setIconImage(getIconImage());
+            dialog.setVisible(true);
         }
     }
 
@@ -773,7 +787,9 @@ public class Tagged extends JFrame {
             JOptionPane optionPane = builder.getOptionPane();
             optionPane.setInitialSelectionValue(String.join(" ", selected.tags()));
 
-            builder.build(this).setVisible(true);
+            JDialog dialog = builder.build(this);
+            dialog.setIconImage(getIconImage());
+            dialog.setVisible(true);
 
             Object result = optionPane.getValue();
             String inputValue = Objects.toString(optionPane.getInputValue());
@@ -815,7 +831,9 @@ public class Tagged extends JFrame {
 
             JOptionPane optionPane = builder.getOptionPane();
 
-            builder.build(this).setVisible(true);
+            JDialog dialog = builder.build(this);
+            dialog.setIconImage(getIconImage());
+            dialog.setVisible(true);
 
             Object result = optionPane.getValue();
             if (result != null && Objects.equals(result, JOptionPane.OK_OPTION)) {
