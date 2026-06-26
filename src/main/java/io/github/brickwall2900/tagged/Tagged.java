@@ -18,6 +18,8 @@ import java.awt.desktop.QuitStrategy;
 import java.awt.event.*;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.lang.ref.Reference;
 import java.nio.file.Path;
 import java.util.*;
@@ -95,7 +97,7 @@ public class Tagged extends JFrame {
         try (InputStream stream = Tagged.class.getResourceAsStream("icon.png")) {
             icon = ImageIO.read(Objects.requireNonNull(stream));
         } catch (IOException | NullPointerException e) {
-            e.printStackTrace();
+            showError(BUNDLE.getString("error.loading.iconError"), e);
         }
 
         setTitle(BUNDLE.getString("title"));
@@ -310,7 +312,7 @@ public class Tagged extends JFrame {
         });
         worker.onDone((files, exception) -> {
             if (exception != null) {
-                exception.printStackTrace();
+                showError(BUNDLE.getString("error.indexing.fileIndexError"), exception);
             } else {
                 TaggedFileListModel model = ((TaggedFileListModel)
                         $("FileTagList", JList.class).getModel());
@@ -327,7 +329,7 @@ public class Tagged extends JFrame {
         SwingWorkerWithDone<Void, Void> worker = helper.newLocationWriterAsync(locations);
         worker.onDone((_, exception) -> {
             if (exception != null) {
-                exception.printStackTrace();
+                showError(BUNDLE.getString("error.indexing.locationWrite"), exception);
             }
         });
         worker.execute();
@@ -337,7 +339,7 @@ public class Tagged extends JFrame {
         SwingWorkerWithDone<Long2ObjectMap<TaggedHelper.FileTag>, Void> worker = helper.newIndexHashWorkerAsync(files);
         worker.onDone((list, exception) -> {
             if (exception != null) {
-                exception.printStackTrace();
+                showError(BUNDLE.getString("error.indexing.hashIndexError"), exception);
             } else {
                 System.out.printf("%d items hashed%n", list.size());
                 helper.getHashToFileTagMap().putAll(list);
@@ -351,7 +353,7 @@ public class Tagged extends JFrame {
         SwingWorkerWithDone<Void, Void> worker = helper.newIndexWriterAsync(list);
         worker.onDone((_, exception) -> {
             if (exception != null) {
-                exception.printStackTrace();
+                showError(BUNDLE.getString("error.indexing.indexWrite"), exception);
             } else {
                 updateStatusBarImmediate("Tags wrote to disk");
             }
@@ -363,7 +365,7 @@ public class Tagged extends JFrame {
         SwingWorkerWithDone<Void, Void> worker = helper.newIndexWriterAsync(list);
         worker.onDone((_, exception) -> {
             if (exception != null) {
-                exception.printStackTrace();
+                showError(BUNDLE.getString("error.indexing.indexWrite"), exception);
             }
         });
         worker.execute();
@@ -407,7 +409,7 @@ public class Tagged extends JFrame {
         SwingWorkerWithDone<List<Path>, Void> worker = helper.newLocationReaderAsync();
         worker.onDone((result, exception) -> {
             if (exception != null) {
-                exception.printStackTrace();
+                showError(BUNDLE.getString("error.loading.locationRead"), exception);
             } else {
                 locations.addAll(result);
                 $(getJMenuBar(), "MenuAddLocation", JMenuItem.class).setEnabled(true);
@@ -424,7 +426,7 @@ public class Tagged extends JFrame {
         SwingWorkerWithDone<Long2ObjectMap<TaggedHelper.FileTag>, Void> worker = helper.newIndexReaderAsync();
         worker.onDone((result, exception) -> {
             if (exception != null) {
-                exception.printStackTrace();
+                showError(BUNDLE.getString("error.loading.indexRead"), exception);
             } else {
                 helper.setHashToFileTagMap(result);
                 updateStatusBarImmediate("Indices loaded");
@@ -560,6 +562,39 @@ public class Tagged extends JFrame {
         SwingUtilities.invokeLater(() -> model.setFilter(finalFilter));
 
         list.setCursor(null);
+    }
+
+    private void showError(String content, Throwable t) {
+        JPanel panel = new JPanel(new BorderLayout());
+        panel.add(new JLabel(content), BorderLayout.NORTH);
+
+        JTextArea errorField = new JTextArea();
+        errorField.setEditable(false);
+
+        JScrollPane scrollPane = new JScrollPane(errorField);
+
+        try (StringWriter writer = new StringWriter();
+             PrintWriter out = new PrintWriter(writer)) {
+            t.printStackTrace(out);
+            errorField.setText(writer.toString());
+        } catch (IOException e) {
+            // silence
+            e.addSuppressed(t);
+            e.printStackTrace(System.err);
+            errorField.setText(t.toString());
+        }
+
+        panel.add(scrollPane, BorderLayout.CENTER);
+
+        JDialog dialog = DialogBuilder.builder()
+                .title(getTitle())
+                .content(panel)
+                .messageType(JOptionPane.ERROR_MESSAGE)
+                .build(this);
+        dialog.setDefaultCloseOperation(WindowConstants.DISPOSE_ON_CLOSE);
+        dialog.setModalityType(Dialog.ModalityType.APPLICATION_MODAL);
+        dialog.setResizable(true);
+        dialog.setVisible(true);
     }
 
     // events //
@@ -878,7 +913,7 @@ public class Tagged extends JFrame {
         try {
             preferences.flush();
         } catch (BackingStoreException e) {
-            e.printStackTrace();
+            showError(BUNDLE.getString("error.preferences.store"), e);
         }
         startIndexWritingAndWait(helper.getHashToFileTagMap());
         repaintTimer.stop();
