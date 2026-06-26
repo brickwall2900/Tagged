@@ -2,11 +2,12 @@ package io.github.brickwall2900.tagged;
 
 import javax.swing.*;
 import java.util.*;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 public class TaggedFileListModel extends AbstractListModel<TaggedHelper.FileTag> {
     private final List<TaggedHelper.FileTag> files = new ArrayList<>();
-    private List<TaggedHelper.FileTag> filterList;
+    private final List<TaggedHelper.FileTag> filterList = new ArrayList<>();
     private SearchOption searchOption = SearchOption.LENIENT;
     private String filter;
 
@@ -22,10 +23,15 @@ public class TaggedFileListModel extends AbstractListModel<TaggedHelper.FileTag>
                 String[] tags1 = currentFile.tags();
                 String[] tags2 = existingTag.tags();
                 if (tags2.length > 0 && tags1.length > 0) {
-                    String[] merged = new String[tags1.length + tags2.length];
+                    /*String[] merged = new String[tags1.length + tags2.length];
                     System.arraycopy(tags1, 0, merged, 0, tags1.length);
-                    System.arraycopy(tags2, 0, merged, tags1.length, tags2.length);
-                    this.files.set(indexOfExistingTag, new TaggedHelper.FileTag(currentFile.locationPath(), currentFile.fileName(), merged));
+                    System.arraycopy(tags2, 0, merged, tags1.length, tags2.length);*/
+                    Set<String> merged = new HashSet<>();
+                    merged.addAll(List.of(tags1));
+                    merged.addAll(List.of(tags2));
+                    this.files.set(indexOfExistingTag, new TaggedHelper.FileTag(currentFile.locationPath(),
+                            currentFile.fileName(),
+                            merged.toArray(String[]::new)));
                 } else if (tags2.length == 0 && tags1.length > 0) {
                     this.files.set(indexOfExistingTag, currentFile);
                 }
@@ -91,15 +97,17 @@ public class TaggedFileListModel extends AbstractListModel<TaggedHelper.FileTag>
             return;
         }
 
+        filterList.clear();
+
         int kwCount = searchKeywords.length;
         for (int i = 0; i < kwCount; i++) {
             searchKeywords[i] = searchKeywords[i].toLowerCase(Locale.ROOT);
         }
 
-        filterList = searchFileTagsAndFilter(new HashSet<>(List.of(searchKeywords)));
+        searchFileTagsAndFilter(new HashSet<>(List.of(searchKeywords)));
     }
 
-    public List<TaggedHelper.FileTag> searchFileTagsAndFilter(Set<String> searchKeywords) {
+    public void searchFileTagsAndFilter(Set<String> searchKeywords) {
         // once i've gotten my compsci degree
         // once my thinking gets better
         // i'll look back at this and improve the fuck out of this
@@ -154,18 +162,17 @@ public class TaggedFileListModel extends AbstractListModel<TaggedHelper.FileTag>
             }
         };
 
-        return stream.sorted(Comparator.comparingInt(m -> {
-            int score = 0;
-            for (String keyword : searchKeywords) {
-                if (((Meta)m).joined.contains(keyword)) {
-                    score++;
-                }
-            }
-            return score;
-        }).reversed())
+        stream.sorted(Comparator.comparingInt(m -> {
+                    int score = 0;
+                    for (String keyword : searchKeywords) {
+                        if (((Meta) m).joined.contains(keyword)) {
+                            score++;
+                        }
+                    }
+                    return score;
+                }).reversed())
                 .map(Meta::fileTag)
-                .toList();
-
+                .collect(Collectors.toCollection(() -> filterList));
     }
 
     @Override
@@ -186,6 +193,17 @@ public class TaggedFileListModel extends AbstractListModel<TaggedHelper.FileTag>
         if (files.contains(oldFileTag)) {
             int index = files.indexOf(oldFileTag);
             files.set(index, fileTag);
+
+            if (filter != null) {
+                updateFilter();
+            }
+        }
+    }
+
+    public void setTags(TaggedHelper.FileTag selected, String[] tags) {
+        if (files.contains(selected)) {
+            int index = files.indexOf(selected);
+            files.set(index, new TaggedHelper.FileTag(selected.locationPath(), selected.fileName(), tags));
 
             if (filter != null) {
                 updateFilter();

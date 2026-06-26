@@ -105,21 +105,28 @@ public class TaggedHelper {
         return LongHashFunction.xx().hashChars(path.toString());
     }
 
-    public void storeTag(FileTag tag) {
-        Path location = locationToHashToFileTagMap.keySet()
+    public void storeTag(FileTag fileTag, String[] tags) {
+        Iterator<Path> locationIterator = locationToHashToFileTagMap.keySet()
                 .stream()
-                .filter(tag.locationPath::startsWith)
-                .findFirst()
-                .orElse(null);
-        if (location != null) {
+                .filter(fileTag.locationPath::startsWith)
+                .iterator();
+        if (!locationIterator.hasNext()) {
+            return;
+        }
+
+        FileTag newTag = new FileTag(fileTag.locationPath, fileTag.fileName, tags);
+
+        while (locationIterator.hasNext()) {
+            Path location = locationIterator.next();
+
             Long2ObjectMap<FileTag> hashToFileTagMap = getHashToFileTagMap(location);
-            long hash = calculateHash(tag);
+            long hash = calculateHash(fileTag);
             boolean present = hashToFileTagMap.containsKey(hash);
-            boolean hasTags = tag.tags.length > 0;
+            boolean hasTags = tags.length > 0;
             if (!hasTags && present) {
                 hashToFileTagMap.remove(hash);
-            } else if (!present && hasTags) {
-                hashToFileTagMap.put(hash, tag);
+            } else if (hasTags) {
+                hashToFileTagMap.put(hash, newTag);
             }
         }
     }

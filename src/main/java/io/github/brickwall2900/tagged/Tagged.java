@@ -424,17 +424,24 @@ public class Tagged extends JFrame {
     }
 
     private void loadIndices(Path location) {
-        SwingWorkerWithDone<Long2ObjectMap<TaggedHelper.FileTag>, Void> worker = helper.newIndexReaderAsync(location);
-        worker.onDone((result, exception) -> {
-            if (exception != null) {
-                showError(BUNDLE.getString("error.loading.indexRead"), exception);
-            } else {
-                helper.setHashToFileTagMap(location, result);
-                startIndexing(result, location);
-                updateStatusBarImmediate("Indices loaded");
-            }
-        });
-        worker.execute();
+        if (helper.doesIndexExist(location)) {
+            SwingWorkerWithDone<Long2ObjectMap<TaggedHelper.FileTag>, Void> worker = helper.newIndexReaderAsync(location);
+            worker.onDone((result, exception) -> {
+                if (exception != null) {
+                    showError(BUNDLE.getString("error.loading.indexRead"), exception);
+                } else {
+                    helper.setHashToFileTagMap(location, result);
+                    startIndexing(result, location);
+                    updateStatusBarImmediate("Indices loaded");
+                }
+            });
+            worker.execute();
+        } else {
+            Long2ObjectMap<TaggedHelper.FileTag> map = helper.getHashToFileTagMap(location);
+            map = map != null ? map : new Long2ObjectOpenHashMap<>();
+            helper.setHashToFileTagMap(location, map);
+            startIndexing(map, location);
+        }
     }
 
     // utility //
@@ -601,17 +608,23 @@ public class Tagged extends JFrame {
         LocationDialog dialog = new LocationDialog(this);
         dialog.setVisible(true);
 
+        for (Path location : locations) {
+            Long2ObjectMap<TaggedHelper.FileTag> map = helper.getHashToFileTagMap(location);
+            if (map != null) {
+                startIndexWritingAndWait(location, map);
+            }
+        }
+
         // re index all locations lol
         TaggedFileListModel model = ((TaggedFileListModel)
                 $("FileTagList", JList.class).getModel());
         model.clear();
 
+        helper.getLocationToHashToFileTagMap().keySet().retainAll(locations);
+
         startWritingLocation(locations);
         for (Path location : locations) {
-            Long2ObjectMap<TaggedHelper.FileTag> map = helper.getHashToFileTagMap(location);
-            map = map != null ? map : new Long2ObjectOpenHashMap<>();
-            helper.setHashToFileTagMap(location, map);
-            startIndexing(map, location);
+            loadIndices(location);
         }
     }
 
@@ -842,9 +855,8 @@ public class Tagged extends JFrame {
                     tags = new String[0];
                 }
 
-                TaggedHelper.FileTag newTag = new TaggedHelper.FileTag(selected.locationPath(), selected.fileName(), tags);
-                model.modify(selected, newTag);
-                helper.storeTag(newTag);
+                model.setTags(selected, tags);
+                helper.storeTag(selected, tags);
             } else if (Objects.equals(result, JOptionPane.CANCEL_OPTION)) {
                 break;
             }
@@ -877,10 +889,9 @@ public class Tagged extends JFrame {
             Object result = optionPane.getValue();
             if (result != null && Objects.equals(result, JOptionPane.OK_OPTION)) {
                 for (TaggedHelper.FileTag fileTag : selected) {
-                    TaggedHelper.FileTag newTag = new TaggedHelper.FileTag(fileTag.locationPath(), fileTag.fileName(),
-                            new String[0]);
-                    model.modify(fileTag, newTag);
-                    helper.storeTag(newTag);
+                    String[] empty = new String[0];
+                    model.setTags(fileTag, empty);
+                    helper.storeTag(fileTag, empty);
                 }
             }
         }
