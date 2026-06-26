@@ -25,4 +25,4 @@ To package this app for distribution: `gradlew assembleDist`
 <img alt="logo" src="icon/icon.png"/>
 
 The icon is inspired by [this meme](https://tenor.com/view/meme-who-are-you-tagging-gng-gif-7480716342697088315).
-It looked AI generated, so I redrew it by hand.
+It looked AI generated, so I redrew it by hand. (i'm no artist </3)
