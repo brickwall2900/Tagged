@@ -287,6 +287,7 @@ public class Tagged extends JFrame {
         preferences.putInt(PREF_KEY_CACHE_BUFFER, Math.clamp(cacheBuffer, 0, Integer.MAX_VALUE));
 
         int cacheSizeLimit = preferences.getInt(PREF_KEY_CACHE_SIZE_LIMIT, 0);
+        iconManager.cacheManager.setCacheMaxSize(cacheSizeLimit * 1024L * 1024L);
         preferences.putInt(PREF_KEY_CACHE_SIZE_LIMIT, Math.clamp(cacheSizeLimit, 0, Integer.MAX_VALUE / 1024 / 1024));
     }
 
@@ -703,6 +704,7 @@ public class Tagged extends JFrame {
             list.setFixedCellHeight(cellSize);
 
             iconManager.setFastTargetEnabled(options.fastTarget());
+            iconManager.cacheManager.setCacheMaxSize(options.cacheSizeLimit() * 1024L * 1024L);
         });
         optionDialog.setVisible(true);
     }

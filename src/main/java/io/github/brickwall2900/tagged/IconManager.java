@@ -18,6 +18,7 @@ import java.lang.ref.SoftReference;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.*;
@@ -41,6 +42,7 @@ public class IconManager {
     private boolean fastTarget = true;
 
     public TaggedHelper helper;
+    public CacheManager cacheManager;
 
     private final AtomicLong loadId = new AtomicLong();
     private final LRUCache<Path, Reference<Icon>> thumbnailCache = new LRUCache<>(30, this::onItemRemoved);
@@ -48,6 +50,7 @@ public class IconManager {
 
     public IconManager(TaggedHelper helper) {
         this.helper = helper;
+        cacheManager = new CacheManager(CACHE_DIR);
         try {
             defaultPlaceholderIcon = new FlatSVGIcon(new ByteArrayInputStream(SVGFILE.getBytes(StandardCharsets.UTF_8)));
             colorFilter = new FlatSVGIcon.ColorFilter();
@@ -211,7 +214,7 @@ public class IconManager {
         return thumbnailCache;
     }
 
-    private Icon loadGif(Path path, String id) throws IOException {
+    private Icon loadGif(Path path) throws IOException {
         try (GifImageWrapperIconIndexedParser parser =
                      new GifImageWrapperFastIconIndexedAutoDownsamplerParser(getShownThumbnailSize(), fastTarget)) {
             GifImageWrapperIcon icon = GifImageReader.readImage(path, parser);
@@ -256,18 +259,6 @@ public class IconManager {
         });
     }
 
-    private static String filenameToHash(String id) {
-        MessageDigest digest = null;
-        try {
-            digest = MessageDigest.getInstance("SHA-1");
-        } catch (NoSuchAlgorithmException _) {
-        }
-        if (digest != null) {
-            return HexFormat.of().formatHex(digest.digest(id.getBytes(StandardCharsets.UTF_8)));
-        } else {
-            return String.valueOf(id.hashCode());
-        }
-    }
     public static final Path CACHE_DIR = Path.of(System.getProperty("user.home"), ".cache", "Tagged");
 
     private Icon loadImage(Path path) {
@@ -279,9 +270,7 @@ public class IconManager {
 
             final int shownThumbnailSize = getShownThumbnailSize();
 
-            String id = filenameToHash(path.toString() + shownThumbnailSize);
-
-            Path cachePath = CACHE_DIR.resolve(id);
+            Path cachePath = cacheManager.newCacheEntry(path.toString() + shownThumbnailSize);
             if (path.getFileName().toString().toLowerCase().endsWith(".gif")) {
                 // special handling with GIF files
 //                try {
@@ -291,7 +280,7 @@ public class IconManager {
 //                } catch (UncheckedIOException e) {
 //                    e.printStackTrace();
 //                }
-                return loadGif(path, id);
+                return loadGif(path);
             }
 
             if (Files.exists(cachePath)) {
@@ -343,9 +332,10 @@ public class IconManager {
             try (OutputStream outputStream = new BufferedOutputStream(Files.newOutputStream(cachePath))) {
                 ImageIO.write(thumbnail, "JPG", outputStream);
             }
+            Files.setLastModifiedTime(cachePath, FileTime.fromMillis(System.currentTimeMillis()));
+            cacheManager.manageCache();
 
             return new ScaledImageIcon(new ImageIcon(thumbnail));
-
         } catch (IOException e) {
             e.printStackTrace();
             return null;
