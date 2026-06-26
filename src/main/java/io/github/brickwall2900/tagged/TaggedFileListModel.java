@@ -24,7 +24,7 @@ public class TaggedFileListModel extends AbstractListModel<TaggedHelper.FileTag>
                 if (tags2.length > 0 && tags1.length > 0) {
                     String[] merged = new String[tags1.length + tags2.length];
                     System.arraycopy(tags1, 0, merged, 0, tags1.length);
-                    System.arraycopy(tags2, tags1.length, merged, tags1.length, tags2.length);
+                    System.arraycopy(tags2, 0, merged, tags1.length, tags2.length);
                     this.files.set(indexOfExistingTag, new TaggedHelper.FileTag(currentFile.locationPath(), currentFile.fileName(), merged));
                 } else if (tags2.length == 0 && tags1.length > 0) {
                     this.files.set(indexOfExistingTag, currentFile);
@@ -75,7 +75,7 @@ public class TaggedFileListModel extends AbstractListModel<TaggedHelper.FileTag>
     private void updateFilter() {
         // remove all
         int fileCount = files.size();
-        fireIntervalRemoved(this, 0, fileCount);
+        fireIntervalRemoved(this, 0, filterList.size());
 
         if (filter == null) {
             fireIntervalAdded(this, 0, fileCount);
@@ -97,7 +97,6 @@ public class TaggedFileListModel extends AbstractListModel<TaggedHelper.FileTag>
         }
 
         filterList = searchFileTagsAndFilter(new HashSet<>(List.of(searchKeywords)));
-
     }
 
     public List<TaggedHelper.FileTag> searchFileTagsAndFilter(Set<String> searchKeywords) {
