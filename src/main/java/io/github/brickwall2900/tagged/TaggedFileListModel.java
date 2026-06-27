@@ -1,6 +1,9 @@
 package io.github.brickwall2900.tagged;
 
 import javax.swing.*;
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.file.Files;
 import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -9,11 +12,14 @@ public class TaggedFileListModel extends AbstractListModel<TaggedHelper.FileTag>
     private final List<TaggedHelper.FileTag> files = new ArrayList<>();
     private final List<TaggedHelper.FileTag> filterList = new ArrayList<>();
     private SearchOption searchOption = SearchOption.LENIENT;
+    private SortOption sortOption = SortOption.NAME;
+    private boolean sortReversed = false;
     private String filter;
 
     public void addAll(TaggedHelper.FileTag[] files) {
         int oldSize = this.files.size();
         int fileCount = files.length;
+        Set<String> merged = new HashSet<>(2);
         for (int i = 0; i < fileCount; i++) {
             TaggedHelper.FileTag currentFile = files[i];
             int indexOfExistingTag = this.files.indexOf(currentFile);
@@ -26,7 +32,7 @@ public class TaggedFileListModel extends AbstractListModel<TaggedHelper.FileTag>
                     /*String[] merged = new String[tags1.length + tags2.length];
                     System.arraycopy(tags1, 0, merged, 0, tags1.length);
                     System.arraycopy(tags2, 0, merged, tags1.length, tags2.length);*/
-                    Set<String> merged = new HashSet<>();
+                    merged.clear();
                     merged.addAll(List.of(tags1));
                     merged.addAll(List.of(tags2));
                     this.files.set(indexOfExistingTag, new TaggedHelper.FileTag(currentFile.locationPath(),
@@ -39,7 +45,7 @@ public class TaggedFileListModel extends AbstractListModel<TaggedHelper.FileTag>
                 this.files.add(currentFile);
             }
         }
-        this.files.sort(Comparator.comparing(TaggedHelper.FileTag::fileName));
+        this.files.sort(sortReversed ? sortOption.getSorter().reversed() : sortOption.getSorter());
 
         if (filter == null) {
             fireIntervalRemoved(this, 0, oldSize);
@@ -64,6 +70,23 @@ public class TaggedFileListModel extends AbstractListModel<TaggedHelper.FileTag>
        if (filter != null) {
            updateFilter();
        }
+    }
+
+    public SortOption getSortOption() {
+        return sortOption;
+    }
+
+    public void setSortOption(SortOption sortOption) {
+        this.sortOption = Objects.requireNonNull(sortOption);
+        files.sort(sortReversed ? sortOption.getSorter().reversed() : sortOption.getSorter());
+    }
+
+    public boolean isSortReversed() {
+        return sortReversed;
+    }
+
+    public void setSortReversed(boolean sortReversed) {
+        this.sortReversed = sortReversed;
     }
 
     public String getFilter() {
@@ -162,7 +185,8 @@ public class TaggedFileListModel extends AbstractListModel<TaggedHelper.FileTag>
             }
         };
 
-        stream.sorted(Comparator.comparingInt(m -> {
+        stream
+                .sorted(Comparator.comparingInt(m -> {
                     int score = 0;
                     for (String keyword : searchKeywords) {
                         if (((Meta) m).joined.contains(keyword)) {
@@ -213,5 +237,57 @@ public class TaggedFileListModel extends AbstractListModel<TaggedHelper.FileTag>
 
     public enum SearchOption {
         SCORED, LENIENT, STRICT;
+    }
+
+    public enum SortOption {
+        NAME {
+            @Override
+            public Comparator<TaggedHelper.FileTag> getSorter() {
+                return Comparator.comparing(TaggedHelper.FileTag::fileName);
+            }
+        },
+
+        LAST_MODIFIED {
+            @Override
+            public Comparator<TaggedHelper.FileTag> getSorter() {
+                return Comparator.comparingLong(f -> {
+                    if (f.locationPath() != null) {
+                        try {
+                            return Files.getLastModifiedTime(f.locationPath()).toMillis();
+                        } catch (IOException e) {
+                            throw new UncheckedIOException(e);
+                        }
+                    }
+                    return 0;
+                });
+            }
+        },
+
+        SIZE {
+            @Override
+            public Comparator<TaggedHelper.FileTag> getSorter() {
+                return Comparator.comparingLong(f -> {
+                    if (f.locationPath() != null) {
+                        try {
+                            return Files.size(f.locationPath());
+                        } catch (IOException e) {
+                            throw new UncheckedIOException(e);
+                        }
+                    }
+                    return 0;
+                });
+            }
+        },
+
+        TAGS {
+            @Override
+            public Comparator<TaggedHelper.FileTag> getSorter() {
+                return (f1, f2) -> {
+                    return Arrays.compare(f1.tags(), f2.tags());
+                };
+            }
+        };
+
+        public Comparator<TaggedHelper.FileTag> getSorter() { throw new UnsupportedOperationException(); }
     }
 }

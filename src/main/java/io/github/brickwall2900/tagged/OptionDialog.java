@@ -4,8 +4,10 @@ import io.github.brickwall2900.swing.core.TargetLocator;
 
 import javax.swing.*;
 import javax.swing.border.TitledBorder;
+import javax.swing.event.ChangeEvent;
 import java.awt.*;
 import java.awt.event.ActionEvent;
+import java.awt.event.ItemEvent;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.util.ResourceBundle;
@@ -43,6 +45,11 @@ public class OptionDialog extends JDialog {
         fastTargetCheckbox.setName("FastTarget");
         fastTargetCheckbox.setToolTipText(BUNDLE.getString("switch.fastTarget.tooltip"));
 
+        JCheckBox reversedSortCheckbox = new JCheckBox();
+        reversedSortCheckbox.setText(BUNDLE.getString("switch.sortReversed"));
+        reversedSortCheckbox.setName("ReversedSort");
+        reversedSortCheckbox.setToolTipText(BUNDLE.getString("switch.sortReversed.tooltip"));
+
         switchesPane.setBorder(BorderFactory.createTitledBorder(null,
                 BUNDLE.getString("border.switches"),
                 TitledBorder.CENTER,
@@ -50,6 +57,7 @@ public class OptionDialog extends JDialog {
         switchesPane.setLayout(new FlowLayout(FlowLayout.LEADING));
         switchesPane.add(darkModeCheckbox);
         switchesPane.add(fastTargetCheckbox);
+        switchesPane.add(reversedSortCheckbox);
 
         JLabel cellSizeLabel = new JLabel(BUNDLE.getString("label.cellSize"));
         JLabel cellPaddingLabel = new JLabel(BUNDLE.getString("label.cellPadding"));
@@ -57,6 +65,7 @@ public class OptionDialog extends JDialog {
         JLabel cacheBufferLabel = new JLabel(BUNDLE.getString("label.cacheBuffer"));
         JLabel cacheSizeLimitLabel = new JLabel(BUNDLE.getString("label.cacheSizeLimit"));
         JLabel searchOptionLabel = new JLabel(BUNDLE.getString("label.searchOption"));
+        JLabel sortOptionLabel = new JLabel(BUNDLE.getString("label.sortOption"));
 
         JSpinner cellSizeField = new JSpinner(new SpinnerNumberModel(32, 32, Short.MAX_VALUE, 1));
         JSpinner cellPaddingField = new JSpinner(new SpinnerNumberModel(0, 0, Short.MAX_VALUE, 1));
@@ -64,6 +73,7 @@ public class OptionDialog extends JDialog {
         JSpinner cacheBufferField = new JSpinner(new SpinnerNumberModel(0, 0, Integer.MAX_VALUE, 1));
         JSpinner cacheSizeLimitField = new JSpinner(new SpinnerNumberModel(0, 0, Integer.MAX_VALUE / 1024 / 1024, 1));
         JComboBox<TaggedFileListModel.SearchOption> searchOptionField = new JComboBox<>(TaggedFileListModel.SearchOption.values());
+        JComboBox<TaggedFileListModel.SortOption> sortOptionField = new JComboBox<>(TaggedFileListModel.SortOption.values());
 
         cellSizeField.setName("CellSize");
         cellPaddingField.setName("CellPadding");
@@ -71,6 +81,7 @@ public class OptionDialog extends JDialog {
         cacheBufferField.setName("CacheBuffer");
         cacheSizeLimitField.setName("CacheSizeLimit");
         searchOptionField.setName("SearchOption");
+        sortOptionField.setName("SortOption");
 
         cellSizeField.setToolTipText(BUNDLE.getString("label.cellSize.tooltip"));
         cellPaddingField.setToolTipText(BUNDLE.getString("label.cellPadding.tooltip"));
@@ -78,6 +89,7 @@ public class OptionDialog extends JDialog {
         cacheBufferField.setToolTipText(BUNDLE.getString("label.cacheBuffer.tooltip"));
         cacheSizeLimitField.setToolTipText(BUNDLE.getString("label.cacheSizeLimit.tooltip"));
         searchOptionField.setToolTipText(BUNDLE.getString("label.searchOption.tooltip"));
+        sortOptionField.setToolTipText(BUNDLE.getString("label.sortOption.tooltip"));
 
         cellSizeLabel.setToolTipText(BUNDLE.getString("label.cellSize.tooltip"));
         cellPaddingLabel.setToolTipText(BUNDLE.getString("label.cellPadding.tooltip"));
@@ -85,6 +97,7 @@ public class OptionDialog extends JDialog {
         cacheBufferLabel.setToolTipText(BUNDLE.getString("label.cacheBuffer.tooltip"));
         cacheSizeLimitLabel.setToolTipText(BUNDLE.getString("label.cacheSizeLimit.tooltip"));
         searchOptionLabel.setToolTipText(BUNDLE.getString("label.searchOption.tooltip"));
+        sortOptionLabel.setToolTipText(BUNDLE.getString("label.sortOption.tooltip"));
 
         cellSizeLabel.setLabelFor(cellSizeField);
         cellPaddingLabel.setLabelFor(cellPaddingField);
@@ -92,6 +105,10 @@ public class OptionDialog extends JDialog {
         cacheBufferLabel.setLabelFor(cacheBufferField);
         cacheSizeLimitLabel.setLabelFor(cacheSizeLimitField);
         searchOptionLabel.setLabelFor(searchOptionField);
+        searchOptionLabel.setLabelFor(sortOptionField);
+
+        searchOptionField.addItemListener(this::onSearchOptionChanged);
+        sortOptionField.addItemListener(this::onSortOptionChanged);
 
         JButton applyButton = new JButton(BUNDLE.getString("button.apply"));
         JButton saveButton = new JButton(BUNDLE.getString("button.save"));
@@ -141,6 +158,9 @@ public class OptionDialog extends JDialog {
         c.gridy++;
         optionPane.add(searchOptionLabel, c);
 
+        c.gridy++;
+        optionPane.add(sortOptionLabel, c);
+
         c.gridwidth = 2;
         c.weightx = 1;
         c.gridx = 1;
@@ -164,6 +184,9 @@ public class OptionDialog extends JDialog {
 
         c.gridy++;
         optionPane.add(searchOptionField, c);
+
+        c.gridy++;
+        optionPane.add(sortOptionField, c);
 
         controlButtonPanel.setLayout(new FlowLayout(FlowLayout.TRAILING));
         controlButtonPanel.add(saveButton);
@@ -195,6 +218,8 @@ public class OptionDialog extends JDialog {
         $("CacheBuffer", JSpinner.class).setValue(options.cacheBuffer);
         $("CacheSizeLimit", JSpinner.class).setValue(options.cacheSizeLimit);
         $("SearchOption", JComboBox.class).setSelectedItem(options.searchOption);
+        $("SortOption", JComboBox.class).setSelectedItem(options.sortOption);
+        $("ReversedSort", JCheckBox.class).setSelected(options.sortReversed);
     }
 
     private ApplicationOptions getOptions() {
@@ -206,7 +231,18 @@ public class OptionDialog extends JDialog {
         int cacheBuffer = Math.clamp((int) $("CacheBuffer", JSpinner.class).getValue(), 0, Integer.MAX_VALUE);
         int cacheSizeLimit = Math.clamp((int) $("CacheSizeLimit", JSpinner.class).getValue(), 0, Integer.MAX_VALUE / 1024 / 1024);
         TaggedFileListModel.SearchOption searchOption = (TaggedFileListModel.SearchOption) $("SearchOption", JComboBox.class).getSelectedItem();
-        return new ApplicationOptions(darkMode, fastTarget, cellSize, cellPadding, threads, cacheBuffer, cacheSizeLimit, searchOption);
+        TaggedFileListModel.SortOption sortOption = (TaggedFileListModel.SortOption) $("SortOption", JComboBox.class).getSelectedItem();
+        boolean reversedSort = $("ReversedSort", JCheckBox.class).isSelected();
+        return new ApplicationOptions(darkMode,
+                fastTarget,
+                cellSize,
+                cellPadding,
+                threads,
+                cacheBuffer,
+                cacheSizeLimit,
+                searchOption,
+                sortOption,
+                reversedSort);
     }
 
     public Consumer<ApplicationOptions> getOnOptionsApplied() {
@@ -219,6 +255,18 @@ public class OptionDialog extends JDialog {
 
     private <T extends Component> T $(String selector, Class<T> as) {
         return as.cast(TargetLocator.getTarget(selector, getContentPane(), this));
+    }
+
+    @SuppressWarnings("unchecked")
+    private void onSearchOptionChanged(ItemEvent e) {
+        JComboBox<TaggedFileListModel.SearchOption> searchOption = $("SearchOption", JComboBox.class);
+        searchOption.setToolTipText(BUNDLE.getString("searchOption." + String.valueOf(searchOption.getSelectedItem()).toLowerCase()));
+    }
+
+    @SuppressWarnings("unchecked")
+    private void onSortOptionChanged(ItemEvent e) {
+        JComboBox<TaggedFileListModel.SortOption> sortOption = $("SortOption", JComboBox.class);
+        sortOption.setToolTipText(BUNDLE.getString("sortOption." + String.valueOf(sortOption.getSelectedItem()).toLowerCase()));
     }
 
     private void onApplyButtonPressed(ActionEvent e) {
@@ -246,6 +294,8 @@ public class OptionDialog extends JDialog {
             int threads,
             int cacheBuffer,
             int cacheSizeLimit,
-            TaggedFileListModel.SearchOption searchOption
+            TaggedFileListModel.SearchOption searchOption,
+            TaggedFileListModel.SortOption sortOption,
+            boolean sortReversed
     ) { }
 }

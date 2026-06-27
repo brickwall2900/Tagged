@@ -42,6 +42,9 @@ public class Tagged extends JFrame {
     public static final String PREF_KEY_DARK_MODE = "DarkMode";
     public static final String PREF_KEY_FAST_TARGET = "FastTarget";
     public static final String PREF_KEY_SEARCH_OPTION = "SearchOption";
+    public static final String PREF_KEY_SORT_OPTION = "SortOption";
+    public static final String PREF_KEY_REVERSED_SORT = "ReversedSort";
+    public static final String[] EMPTY_TAGS = new String[0];
 
     static {
         try {
@@ -161,6 +164,12 @@ public class Tagged extends JFrame {
                 preferences.get(PREF_KEY_SEARCH_OPTION, TaggedFileListModel.SearchOption.LENIENT.name())
         );
         model.setSearchOption(searchOption);
+
+        TaggedFileListModel.SortOption sortOption = TaggedFileListModel.SortOption.valueOf(
+                preferences.get(PREF_KEY_SORT_OPTION, TaggedFileListModel.SortOption.NAME.name())
+        );
+        model.setSortOption(sortOption);
+        model.setSortReversed(preferences.getBoolean(PREF_KEY_REVERSED_SORT, false));
 
         JPopupMenu popupMenu = new JPopupMenu();
         initContextMenu(popupMenu::add, popupMenu::addSeparator);
@@ -432,7 +441,7 @@ public class Tagged extends JFrame {
                 } else {
                     helper.setHashToFileTagMap(location, result);
                     startIndexing(result, location);
-                    updateStatusBarImmediate("Indices loaded");
+                    updateStatusBarImmediate(BUNDLE.getString("status.indexRead"));
                 }
             });
             worker.execute();
@@ -690,7 +699,11 @@ public class Tagged extends JFrame {
                 preferences.getInt(PREF_KEY_CACHE_SIZE_LIMIT, 0),
                 TaggedFileListModel.SearchOption.valueOf(
                         preferences.get(PREF_KEY_SEARCH_OPTION, TaggedFileListModel.SearchOption.LENIENT.name())
-                )
+                ),
+                TaggedFileListModel.SortOption.valueOf(
+                        preferences.get(PREF_KEY_SORT_OPTION, TaggedFileListModel.SortOption.NAME.name())
+                ),
+                preferences.getBoolean(PREF_KEY_REVERSED_SORT, false)
         ));
         optionDialog.setOnOptionsApplied((options) -> {
             preferences.putInt(PREF_KEY_CELL_SIZE, Math.clamp(options.cellSize(), 32, Short.MAX_VALUE));
@@ -701,6 +714,8 @@ public class Tagged extends JFrame {
             preferences.putBoolean(PREF_KEY_DARK_MODE, options.darkMode());
             preferences.putBoolean(PREF_KEY_FAST_TARGET, options.fastTarget());
             preferences.put(PREF_KEY_SEARCH_OPTION, String.valueOf(options.searchOption()));
+            preferences.put(PREF_KEY_SORT_OPTION, String.valueOf(options.sortOption()));
+            preferences.putBoolean(PREF_KEY_REVERSED_SORT, options.sortReversed());
 
             setDarkMode(options.darkMode(), optionDialog);
             // specifically for dark mode ;-;);
@@ -713,6 +728,8 @@ public class Tagged extends JFrame {
             cellRenderer.setIconLoadedBuffer(options.cacheBuffer());
 
             model.setSearchOption(options.searchOption());
+            model.setSortReversed(options.sortReversed());
+            model.setSortOption(options.sortOption());
 
             int cellSize = options.cellSize();
             list.setFixedCellWidth(cellSize);
@@ -852,7 +869,7 @@ public class Tagged extends JFrame {
                 String[] tags = inputValue.split("\\s+");
 
                 if (tags.length == 1 && tags[0].isBlank()) {
-                    tags = new String[0];
+                    tags = EMPTY_TAGS;
                 }
 
                 model.setTags(selected, tags);
@@ -889,9 +906,8 @@ public class Tagged extends JFrame {
             Object result = optionPane.getValue();
             if (result != null && Objects.equals(result, JOptionPane.OK_OPTION)) {
                 for (TaggedHelper.FileTag fileTag : selected) {
-                    String[] empty = new String[0];
-                    model.setTags(fileTag, empty);
-                    helper.storeTag(fileTag, empty);
+                    model.setTags(fileTag, EMPTY_TAGS);
+                    helper.storeTag(fileTag, EMPTY_TAGS);
                 }
             }
         }
